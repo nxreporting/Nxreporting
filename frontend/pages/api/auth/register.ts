@@ -3,6 +3,13 @@ import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import { createClient } from '@supabase/supabase-js'
 
+// Simple CUID generator (similar to Prisma's cuid())
+function generateCuid(): string {
+  const timestamp = Date.now().toString(36)
+  const randomPart = Math.random().toString(36).substring(2, 15)
+  return `c${timestamp}${randomPart}`
+}
+
 
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -78,6 +85,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const { data: newUser, error: insertError } = await supabase
       .from('users')
       .insert({
+        id: generateCuid(), // Generate ID manually
         email,
         password: hashedPassword,
         name,
