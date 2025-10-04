@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "cd frontend && npm run dev",
     "dev:full": "cd frontend && npm run dev",
-    "build": "cd frontend && npm run build",
+    "build": "cd frontend && npm run vercel-build",
     "start": "cd frontend && npm run start",
     "deploy": "cd frontend && vercel --prod",
     "deploy:preview": "cd frontend && vercel",
