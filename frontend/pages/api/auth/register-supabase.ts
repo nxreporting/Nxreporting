@@ -73,13 +73,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const hashedPassword = await bcrypt.hash(password, 12)
 
     // Create user
+    const now = new Date().toISOString()
     const { data: newUser, error: insertError } = await supabase
       .from('users')
       .insert({
+        id: `c${Date.now().toString(36)}${Math.random().toString(36).substring(2, 15)}`, // Generate ID
         email,
         password: hashedPassword,
         name,
-        role
+        role,
+        createdAt: now,
+        updatedAt: now
       })
       .select('id, email, name, role, createdAt')
       .single()

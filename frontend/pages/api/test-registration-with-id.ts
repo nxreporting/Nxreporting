@@ -41,6 +41,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const hashedPassword = await bcrypt.hash(testPassword, 12)
 
     // Create user with explicit ID
+    const now = new Date().toISOString()
     const { data: newUser, error: insertError } = await supabase
       .from('users')
       .insert({
@@ -48,7 +49,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         email: testEmail,
         password: hashedPassword,
         name: testName,
-        role
+        role,
+        createdAt: now,
+        updatedAt: now
       })
       .select('id, email, name, role, createdAt')
       .single()
