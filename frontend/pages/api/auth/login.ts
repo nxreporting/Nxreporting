@@ -1,129 +1,109 @@
 import { NextApiRequest, NextApiResponse } from 'next'
 import bcrypt from 'bcryptjs'
-import Joi from 'joi'
-import { prisma } from '../../../lib/prisma'
-import { generateToken } from '../../../lib/auth'
-import { 
-  ApiResponse, 
-  sendSuccess, 
-  sendValidationError, 
-  sendError,
-  sendMethodNotAllowedError,
-  withErrorHandling,
-  validateMethod
-} from '../../../lib/api-response'
+import jwt from 'jsonwebtoken'
+import { createClient } from '@supabase/supabase-js'
 
-// Validation schema for login
-const loginSchema = Joi.object({
-  email: Joi.string().email().required(),
-  password: Joi.string().required()
-})
-
-interface LoginRequest {
-  email: string
-  password: string
-}
-
-interface LoginResponse {
-  user: {
-    id: string
-    email: string
-    name: string
-    role: string
-  }
-  token: string
-}
-
-async function loginHandler(
-  req: NextApiRequest,
-  res: NextApiResponse<ApiResponse<LoginResponse>>
-) {
-  // Validate HTTP method
-  if (!validateMethod(req, res, ['POST'])) {
-    return
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ 
+      success: false, 
+      error: { message: 'Method not allowed' } 
+    })
   }
 
   try {
-    // Validate request body
-    const { error, value } = loginSchema.validate(req.body)
-    if (error) {
-      return sendValidationError(res, error.details[0].message)
+    const { email, password } = req.body
+
+    // Validate input
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'Email and password are required' }
+      })
     }
 
-    const { email, password } = value as LoginRequest
+    // Create Supabase client with service role key
+    const supabaseUrl = 'https://kmdvxphsbtyiorwbvklg.supabase.co'
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-    // Find user by email
-    const user = await prisma.user.findUnique({ 
-      where: { email },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        password: true
+    if (!supabaseServiceKey) {
+      return res.status(500).json({
+        success: false,
+        error: { message: 'Server configuration error: Missing Supabase key' }
+      })
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
       }
     })
-    
-    if (!user) {
-      return sendError(
-        res,
-        'Invalid credentials',
-        401,
-        'INVALID_CREDENTIALS'
-      )
+
+    // Find user by email
+    const { data: user, error: findError } = await supabase
+      .from('users')
+      .select('id, email, name, role, password')
+      .eq('email', email)
+      .single()
+
+    if (findError || !user) {
+      return res.status(401).json({
+        success: false,
+        error: { message: 'Invalid credentials' }
+      })
     }
 
     // Verify password
     const isPasswordValid = await bcrypt.compare(password, user.password)
     if (!isPasswordValid) {
-      return sendError(
-        res,
-        'Invalid credentials',
-        401,
-        'INVALID_CREDENTIALS'
-      )
+      return res.status(401).json({
+        success: false,
+        error: { message: 'Invalid credentials' }
+      })
     }
 
     // Generate JWT token
-    const token = generateToken({
-      id: user.id,
-      email: user.email,
-      role: user.role
-    })
-
-    // Prepare user data (exclude password)
-    const userData = {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: user.role
+    const jwtSecret = process.env.JWT_SECRET
+    if (!jwtSecret) {
+      return res.status(500).json({
+        success: false,
+        error: { message: 'Server configuration error: Missing JWT secret' }
+      })
     }
 
-    // Send success response
-    sendSuccess(res, { user: userData, token })
+    const token = jwt.sign(
+      { 
+        id: user.id, 
+        email: user.email, 
+        role: user.role 
+      },
+      jwtSecret,
+      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+    )
+
+    // Return success response (exclude password)
+    res.status(200).json({
+      success: true,
+      data: {
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role
+        },
+        token
+      }
+    })
 
   } catch (error) {
     console.error('Login error:', error)
-    
-    if (error instanceof Error) {
-      // Handle JWT secret missing
-      if (error.message.includes('JWT_SECRET')) {
-        return sendError(
-          res,
-          'Server configuration error',
-          500,
-          'CONFIG_ERROR'
-        )
+    res.status(500).json({
+      success: false,
+      error: { 
+        message: 'Internal server error',
+        details: process.env.NODE_ENV === 'development' ? (error as Error).message : undefined
       }
-    }
-
-    return sendError(
-      res,
-      'Login failed',
-      500,
-      'LOGIN_ERROR'
-    )
+    })
   }
 }
-
-export default withErrorHandling(loginHandler)
