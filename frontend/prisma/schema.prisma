@@ -1,0 +1,77 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String          @id @default(cuid())
+  email         String          @unique
+  name          String
+  password      String
+  role          Role            @default(USER)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  extractedData ExtractedData[]
+  uploadedFiles UploadedFile[]
+
+  @@map("users")
+}
+
+model UploadedFile {
+  id            String          @id @default(cuid())
+  originalName  String
+  filename      String
+  path          String
+  mimetype      String
+  size          Int
+  uploadedAt    DateTime        @default(now())
+  uploadedById  String
+  extractedData ExtractedData[]
+  uploadedBy    User            @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+
+  @@map("uploaded_files")
+}
+
+model ExtractedData {
+  id             String           @id @default(cuid())
+  rawData        Json
+  structuredData Json
+  status         ExtractionStatus @default(PROCESSING)
+  errorMessage   String?
+  extractedAt    DateTime         @default(now())
+  fileId         String
+  extractedById  String
+  extractedBy    User             @relation(fields: [extractedById], references: [id])
+  file           UploadedFile     @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@map("extracted_data")
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String
+  resource  String
+  details   Json?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@map("audit_logs")
+}
+
+enum Role {
+  ADMIN
+  USER
+}
+
+enum ExtractionStatus {
+  PROCESSING
+  COMPLETED
+  FAILED
+  PENDING
+}

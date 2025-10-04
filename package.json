@@ -1,0 +1,29 @@
+{
+  "name": "pdf-extraction-system",
+  "version": "1.0.0",
+  "description": "PDF Data Extraction & Reporting System",
+  "scripts": {
+    "dev": "cd frontend && npm run dev",
+    "dev:full": "cd frontend && npm run dev",
+    "build": "cd frontend && npm run build",
+    "start": "cd frontend && npm run start",
+    "deploy": "cd frontend && vercel --prod",
+    "deploy:preview": "cd frontend && vercel",
+    "setup:env": "node scripts/setup-vercel-env.js",
+    "validate:env": "node scripts/setup-vercel-env.js --validate",
+    "test:dev": "node scripts/test-dev-environment.js",
+    "verify:hotreload": "node scripts/verify-hot-reload.js",
+    "install:all": "npm install && cd frontend && npm install",
+    "db:migrate": "cd frontend && npm run prisma:migrate",
+    "db:generate": "cd frontend && npm run prisma:generate",
+    "db:studio": "cd frontend && npm run prisma:studio"
+  },
+  "dependencies": {
+    "@huggingface/inference": "^4.8.0",
+    "form-data": "^4.0.4"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "node-fetch": "^3.3.2"
+  }
+}
