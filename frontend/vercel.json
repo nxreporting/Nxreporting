@@ -1,24 +1,21 @@
 {
   "version": 2,
   "framework": "nextjs",
-  "buildCommand": "npm run build",
+  "buildCommand": "npm run vercel-build",
   "devCommand": "npm run dev",
   "installCommand": "npm install",
   "functions": {
-    "pages/api/extract.js": {
+    "pages/api/extract.ts": {
       "maxDuration": 50
     },
-    "pages/api/files/**/*.js": {
+    "pages/api/files/**/*.ts": {
       "maxDuration": 30
     },
-    "pages/api/data/**/*.js": {
+    "pages/api/data/**/*.ts": {
       "maxDuration": 30
     },
-    "pages/api/reports/**/*.js": {
+    "pages/api/reports/**/*.ts": {
       "maxDuration": 30
-    },
-    "pages/api/**/*.js": {
-      "maxDuration": 10
     }
   },
   "env": {
