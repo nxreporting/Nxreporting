@@ -18,9 +18,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const supabase = createClient(supabaseUrl, supabaseKey)
     
     // Test connection by querying users table
-    const { data, error } = await supabase
+    const { data, error, count } = await supabase
       .from('users')
-      .select('count(*)')
+      .select('id, email, name', { count: 'exact' })
       .limit(1)
 
     if (error) {
@@ -35,7 +35,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).json({
       success: true,
       message: 'Supabase connection successful',
-      data: data
+      data: data,
+      count: count
     })
 
   } catch (error) {
