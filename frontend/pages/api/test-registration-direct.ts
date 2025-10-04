@@ -63,7 +63,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         name: testName,
         role
       })
-      .select('id, email, name, role, created_at')
+      .select('id, email, name, role, createdAt')
       .single()
 
     if (insertError) {

@@ -83,7 +83,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         name,
         role
       })
-      .select('id, email, name, role, created_at')
+      .select('id, email, name, role, createdAt')
       .single()
 
     if (insertError) {
@@ -122,7 +122,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           email: newUser.email,
           name: newUser.name,
           role: newUser.role,
-          createdAt: newUser.created_at
+          createdAt: newUser.createdAt
         },
         token
       }
