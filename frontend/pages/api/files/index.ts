@@ -1,280 +1,161 @@
 import { NextApiRequest, NextApiResponse } from 'next'
-import * as formidable from 'formidable'
-import { promises as fs } from 'fs'
-// UUID functionality is handled by generateSafeFilename
-import { prisma } from '../../../lib/prisma'
-import { withAuth, AuthRequest } from '../../../lib/auth'
-import { 
-  sendSuccess, 
-  sendError, 
-  sendValidationError, 
-  validateMethod,
-  withErrorHandling 
-} from '../../../lib/api-response'
-import { uploadFile, validateFile, generateSafeFilename } from '../../../lib/storage'
-import { nanonetsService } from '../../../lib/services/nanonetsExtractionService'
+import jwt from 'jsonwebtoken'
+import { createClient } from '@supabase/supabase-js'
 
-// Disable default body parser for file uploads
-export const config = {
-  api: {
-    bodyParser: false,
-  },
+// Helper function to verify JWT and get user
+async function verifyAuth(req: NextApiRequest): Promise<{ success: boolean; user?: any; error?: string }> {
+  try {
+    const authHeader = req.headers.authorization
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return { success: false, error: 'No token provided' }
+    }
+
+    const token = authHeader.replace('Bearer ', '')
+    const jwtSecret = process.env.JWT_SECRET
+    if (!jwtSecret) {
+      return { success: false, error: 'JWT secret not configured' }
+    }
+
+    const decoded = jwt.verify(token, jwtSecret) as any
+    return { success: true, user: decoded }
+  } catch (error) {
+    return { success: false, error: 'Invalid token' }
+  }
 }
 
-async function handler(req: AuthRequest, res: NextApiResponse): Promise<void> {
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  // Verify authentication
+  const auth = await verifyAuth(req)
+  if (!auth.success) {
+    return res.status(401).json({
+      success: false,
+      error: { message: auth.error }
+    })
+  }
+
   if (req.method === 'GET') {
-    return handleGetFiles(req, res)
+    return handleGetFiles(req, res, auth.user!)
   } else if (req.method === 'POST') {
-    return handleFileUpload(req, res)
+    return res.status(501).json({
+      success: false,
+      error: { message: 'File upload not yet implemented with Supabase' }
+    })
   } else {
-    validateMethod(req, res, ['GET', 'POST'])
-    return
+    return res.status(405).json({
+      success: false,
+      error: { message: 'Method not allowed' }
+    })
   }
 }
 
 /**
  * GET /api/files - Get user's uploaded files with pagination
  */
-async function handleGetFiles(req: AuthRequest, res: NextApiResponse) {
+async function handleGetFiles(req: NextApiRequest, res: NextApiResponse, user: any) {
   try {
-    const user = req.user!
     const page = parseInt(req.query.page as string) || 1
     const limit = Math.min(parseInt(req.query.limit as string) || 10, 50) // Max 50 items per page
-    const skip = (page - 1) * limit
+    const offset = (page - 1) * limit
 
-    const [files, total] = await Promise.all([
-      prisma.uploadedFile.findMany({
-        where: { uploadedById: user.id },
-        include: {
-          extractedData: {
-            select: {
-              id: true,
-              status: true,
-              extractedAt: true,
-              errorMessage: true
-            }
-          }
-        },
-        orderBy: { uploadedAt: 'desc' },
-        skip,
-        take: limit
-      }),
-      prisma.uploadedFile.count({
-        where: { uploadedById: user.id }
+    // Create Supabase client
+    const supabaseUrl = 'https://kmdvxphsbtyiorwbvklg.supabase.co'
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+    if (!supabaseServiceKey) {
+      return res.status(500).json({
+        success: false,
+        error: { message: 'Server configuration error: Missing Supabase key' }
       })
-    ])
+    }
 
-    sendSuccess(res, { files }, 200, { page, limit, total })
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    })
+
+    // Get files with extracted data
+    const { data: files, error: filesError } = await supabase
+      .from('uploaded_files')
+      .select(`
+        id,
+        originalName,
+        filename,
+        path,
+        mimetype,
+        size,
+        uploadedAt,
+        uploadedById,
+        extracted_data (
+          id,
+          status,
+          extractedAt,
+          errorMessage
+        )
+      `)
+      .eq('uploadedById', user.id)
+      .order('uploadedAt', { ascending: false })
+      .range(offset, offset + limit - 1)
+
+    if (filesError) {
+      console.error('Error fetching files:', filesError)
+      return res.status(500).json({
+        success: false,
+        error: { message: 'Failed to fetch files' }
+      })
+    }
+
+    // Get total count
+    const { count: total, error: countError } = await supabase
+      .from('uploaded_files')
+      .select('*', { count: 'exact', head: true })
+      .eq('uploadedById', user.id)
+
+    if (countError) {
+      console.error('Error counting files:', countError)
+      return res.status(500).json({
+        success: false,
+        error: { message: 'Failed to count files' }
+      })
+    }
+
+    // Transform data to match expected format
+    const transformedFiles = files?.map(file => ({
+      id: file.id,
+      originalName: file.originalName,
+      filename: file.filename,
+      path: file.path,
+      mimetype: file.mimetype,
+      size: file.size,
+      uploadedAt: file.uploadedAt,
+      uploadedById: file.uploadedById,
+      extractedData: file.extracted_data || []
+    })) || []
+
+    res.status(200).json({
+      success: true,
+      data: { files: transformedFiles },
+      metadata: {
+        pagination: {
+          page,
+          limit,
+          total: total || 0,
+          totalPages: Math.ceil((total || 0) / limit)
+        },
+        timestamp: new Date().toISOString(),
+        requestId: `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+      }
+    })
   } catch (error) {
     console.error('Get files error:', error)
-    sendError(res, 'Failed to fetch files', 500)
+    res.status(500).json({
+      success: false,
+      error: { 
+        message: 'Failed to fetch files',
+        details: process.env.NODE_ENV === 'development' ? (error as Error).message : undefined
+      }
+    })
   }
 }
 
-/**
- * POST /api/files - Upload PDF file and optionally extract data
- */
-async function handleFileUpload(req: AuthRequest, res: NextApiResponse) {
-  try {
-    const user = req.user!
-
-    // Parse multipart form data
-    const form = formidable({
-      maxFileSize: parseInt(process.env.MAX_FILE_SIZE || '52428800'), // 50MB default
-      keepExtensions: true,
-      allowEmptyFiles: false,
-    })
-
-    const [fields, files] = await form.parse(req)
-    const uploadedFile = Array.isArray(files.pdf) ? files.pdf[0] : files.pdf
-
-    if (!uploadedFile) {
-      return sendValidationError(res, 'No file uploaded')
-    }
-
-    // Validate file type and size
-    const fileBuffer = await fs.readFile(uploadedFile.filepath)
-    
-    // Create a mock File object for validation
-    const mockFile = {
-      size: uploadedFile.size,
-      type: uploadedFile.mimetype || 'application/pdf',
-      name: uploadedFile.originalFilename || 'document.pdf'
-    } as File
-
-    const validation = validateFile(mockFile, {
-      maxSize: parseInt(process.env.MAX_FILE_SIZE || '52428800'),
-      allowedTypes: ['application/pdf']
-    })
-
-    if (!validation.valid) {
-      // Clean up temporary file
-      await fs.unlink(uploadedFile.filepath).catch(() => {})
-      return sendValidationError(res, validation.error)
-    }
-
-    // Generate safe filename and upload to cloud storage
-    const safeFilename = generateSafeFilename(uploadedFile.originalFilename || 'document.pdf')
-    const uploadResult = await uploadFile(fileBuffer, safeFilename)
-
-    if (!uploadResult.success) {
-      // Clean up temporary file
-      await fs.unlink(uploadedFile.filepath).catch(() => {})
-      return sendError(res, uploadResult.error || 'File upload failed', 500)
-    }
-
-    // Save file info to database
-    const dbFile = await prisma.uploadedFile.create({
-      data: {
-        originalName: uploadedFile.originalFilename || 'document.pdf',
-        filename: safeFilename,
-        path: uploadResult.url!, // Cloud storage URL
-        mimetype: uploadedFile.mimetype || 'application/pdf',
-        size: uploadedFile.size,
-        uploadedById: user.id
-      }
-    })
-
-    // Check if AI extraction is requested
-    const useAI = fields.useAI?.[0] === 'true' || req.query.useAI === 'true'
-    
-    // Start PDF extraction process (async, don't wait for completion)
-    extractPDFDataAsync(uploadedFile.filepath, uploadResult.url!, dbFile.id, user.id, useAI)
-      .catch(error => {
-        console.error('Async extraction error:', error)
-      })
-
-    // Clean up temporary file
-    await fs.unlink(uploadedFile.filepath).catch(() => {})
-
-    sendSuccess(res, { file: dbFile }, 201)
-  } catch (error) {
-    console.error('Upload error:', error)
-    sendError(res, 'File upload failed', 500)
-  }
-}
-
-/**
- * Async PDF extraction function that doesn't block the response
- */
-async function extractPDFDataAsync(
-  tempFilePath: string,
-  cloudUrl: string,
-  fileId: string,
-  userId: string,
-  useAI: boolean
-) {
-  try {
-    console.log(`🚀 Starting extraction for file ${fileId} (AI: ${useAI})`)
-    
-    // Use Nanonets service for extraction from cloud URL
-    const nanonetsResult = await nanonetsService.extractFromUrl(cloudUrl, 'flat-json')
-    
-    if (!nanonetsResult.success) {
-      throw new Error(nanonetsResult.error || 'Nanonets extraction failed')
-    }
-    
-    // Prepare extracted data in the expected format
-    const extractedData = {
-      raw: {
-        text: nanonetsResult.extractedText || '',
-        pages: 1, // Nanonets doesn't provide page count
-        info: nanonetsResult.rawResponse
-      },
-      structured: {
-        title: extractTitleFromText(nanonetsResult.extractedText || ''),
-        dates: extractDatesFromText(nanonetsResult.extractedText || ''),
-        numbers: extractNumbersFromText(nanonetsResult.extractedText || ''),
-        metadata: {
-          extractionMethod: 'nanonets',
-          extractionTimestamp: new Date().toISOString(),
-          useAI: useAI
-        }
-      }
-    }
-    
-    // If AI extraction was requested, add AI-specific data
-    if (useAI && nanonetsResult.data) {
-      (extractedData.structured as any).aiExtracted = {
-        success: true,
-        data: nanonetsResult.data
-      }
-    }
-    
-    await prisma.extractedData.create({
-      data: {
-        rawData: extractedData.raw,
-        structuredData: extractedData.structured,
-        status: 'COMPLETED',
-        fileId: fileId,
-        extractedById: userId
-      }
-    })
-    
-    console.log('✅ Extraction completed successfully for file', fileId)
-  } catch (extractionError) {
-    console.error('Extraction error for file', fileId, ':', extractionError)
-    
-    await prisma.extractedData.create({
-      data: {
-        rawData: {},
-        structuredData: {},
-        status: 'FAILED',
-        errorMessage: extractionError instanceof Error ? extractionError.message : 'Unknown error',
-        fileId: fileId,
-        extractedById: userId
-      }
-    })
-  } finally {
-    // Clean up temporary file if it still exists
-    try {
-      await fs.unlink(tempFilePath)
-    } catch (error) {
-      // File might already be cleaned up, ignore error
-    }
-  }
-}
-
-/**
- * Helper functions for basic text extraction
- */
-function extractTitleFromText(text: string): string {
-  const lines = text.split('\n').filter(line => line.trim().length > 0)
-  if (lines.length > 0) {
-    const titleCandidate = lines.find(line => 
-      line.trim().length > 10 && 
-      !/^\d+$/.test(line.trim()) &&
-      !line.includes('Page ')
-    )
-    return titleCandidate ? titleCandidate.trim() : lines[0].trim()
-  }
-  return ''
-}
-
-function extractDatesFromText(text: string): string[] {
-  const datePatterns = [
-    /\b\d{1,2}\/\d{1,2}\/\d{4}\b/g,
-    /\b\d{1,2}-\d{1,2}-\d{4}\b/g,
-    /\b\d{4}-\d{2}-\d{2}\b/g
-  ]
-  
-  let dates: string[] = []
-  datePatterns.forEach(pattern => {
-    const matches = text.match(pattern)
-    if (matches) {
-      dates = [...dates, ...matches]
-    }
-  })
-  return Array.from(new Set(dates))
-}
-
-function extractNumbersFromText(text: string): number[] {
-  const numberPattern = /\b\d+(?:\.\d{2})?\b/g
-  const matches = text.match(numberPattern)
-  if (matches) {
-    return matches.map(num => parseFloat(num)).filter(num => !isNaN(num))
-  }
-  return []
-}
-
-export default withAuth(withErrorHandling(handler))

@@ -1,70 +1,92 @@
 import { NextApiRequest, NextApiResponse } from 'next'
-import { prisma } from '../../../lib/prisma'
-import { withAuth, AuthRequest } from '../../../lib/auth'
-import { 
-  ApiResponse, 
-  sendSuccess, 
-  sendError,
-  sendNotFoundError,
-  sendMethodNotAllowedError,
-  withErrorHandling,
-  validateMethod
-} from '../../../lib/api-response'
+import jwt from 'jsonwebtoken'
+import { createClient } from '@supabase/supabase-js'
 
-interface UserProfileResponse {
-  user: {
-    id: string
-    email: string
-    name: string
-    role: string
-    createdAt: Date
-  }
-}
-
-async function meHandler(
-  req: AuthRequest,
-  res: NextApiResponse<ApiResponse<UserProfileResponse>>
-) {
-  // Validate HTTP method
-  if (!validateMethod(req, res, ['GET'])) {
-    return
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method !== 'GET') {
+    return res.status(405).json({ 
+      success: false, 
+      error: { message: 'Method not allowed' } 
+    })
   }
 
   try {
-    // User is already authenticated via withAuth middleware
-    // req.user is guaranteed to exist at this point
-    const userId = req.user!.id
+    // Get token from Authorization header
+    const authHeader = req.headers.authorization
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({
+        success: false,
+        error: { message: 'Access denied. No token provided.' }
+      })
+    }
 
-    // Fetch fresh user data from database
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { 
-        id: true, 
-        email: true, 
-        name: true, 
-        role: true, 
-        createdAt: true 
+    const token = authHeader.replace('Bearer ', '')
+    
+    // Verify JWT token
+    const jwtSecret = process.env.JWT_SECRET
+    if (!jwtSecret) {
+      return res.status(500).json({
+        success: false,
+        error: { message: 'Server configuration error: Missing JWT secret' }
+      })
+    }
+
+    let decoded
+    try {
+      decoded = jwt.verify(token, jwtSecret) as any
+    } catch (jwtError) {
+      return res.status(401).json({
+        success: false,
+        error: { message: 'Invalid token' }
+      })
+    }
+
+    // Create Supabase client
+    const supabaseUrl = 'https://kmdvxphsbtyiorwbvklg.supabase.co'
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+    if (!supabaseServiceKey) {
+      return res.status(500).json({
+        success: false,
+        error: { message: 'Server configuration error: Missing Supabase key' }
+      })
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
       }
     })
 
-    if (!user) {
-      return sendNotFoundError(res, 'User not found')
+    // Fetch user data from database
+    const { data: user, error: findError } = await supabase
+      .from('users')
+      .select('id, email, name, role, createdAt')
+      .eq('id', decoded.id)
+      .single()
+
+    if (findError || !user) {
+      return res.status(404).json({
+        success: false,
+        error: { message: 'User not found' }
+      })
     }
 
-    // Send success response
-    sendSuccess(res, { user })
+    // Return user data
+    res.status(200).json({
+      success: true,
+      data: { user }
+    })
 
   } catch (error) {
     console.error('Get user profile error:', error)
-    
-    return sendError(
-      res,
-      'Failed to retrieve user profile',
-      500,
-      'PROFILE_ERROR'
-    )
+    res.status(500).json({
+      success: false,
+      error: { 
+        message: 'Internal server error',
+        details: process.env.NODE_ENV === 'development' ? (error as Error).message : undefined
+      }
+    })
   }
 }
-
-// Apply authentication middleware and error handling
-export default withErrorHandling(withAuth(meHandler))
