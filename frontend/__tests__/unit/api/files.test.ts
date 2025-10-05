@@ -3,7 +3,7 @@ import { NextApiRequest, NextApiResponse } from 'next'
 import filesHandler from '../../../pages/api/files/index'
 import { prisma } from '../../../lib/prisma'
 import { uploadFile, validateFile, generateSafeFilename } from '../../../lib/storage'
-import * as formidable from 'formidable'
+import formidable from 'formidable'
 
 // Mock formidable
 jest.mock('formidable')

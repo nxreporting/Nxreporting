@@ -1,5 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next'
-import * as formidable from 'formidable'
+import formidable from 'formidable'
 import { promises as fs } from 'fs'
 
 // Disable body parser for file uploads

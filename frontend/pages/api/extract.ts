@@ -1,5 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import * as formidable from 'formidable';
+import formidable from 'formidable';
 import { promises as fs } from 'fs';
 import { nanonetsService } from '../../lib/services/nanonetsExtractionService';
 import { DataFormatter } from '../../lib/utils/dataFormatter';
