@@ -46,10 +46,15 @@ export class NanonetsExtractionService {
 
     try {
       // Use the correct Nanonets extraction API endpoint
+      // Use node-fetch compatible FormData
+      const FormData = require('form-data');
       const formData = new FormData();
-      const uint8Array = new Uint8Array(fileBuffer);
-      const blob = new Blob([uint8Array], { type: 'application/pdf' });
-      formData.append('file', blob, filename);
+      
+      // Append the file buffer directly (works in Node.js)
+      formData.append('file', fileBuffer, {
+        filename: filename,
+        contentType: 'application/pdf'
+      });
       formData.append('output_type', outputType || 'markdown');
 
       console.log(`📡 Making request to Nanonets extraction API...`);
@@ -60,6 +65,7 @@ export class NanonetsExtractionService {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
+          ...formData.getHeaders()
         },
         body: formData
       });
