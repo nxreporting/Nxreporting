@@ -199,6 +199,7 @@ export class NanonetsExtractionService {
     formData.append('detectOrientation', 'false');
     formData.append('scale', 'true');
     formData.append('OCREngine', '2'); // Use OCR Engine 2 for better accuracy
+    formData.append('filetype', 'PDF'); // Explicitly specify file type for PDFs
 
     console.log('📡 Making OCR.space request...');
 
