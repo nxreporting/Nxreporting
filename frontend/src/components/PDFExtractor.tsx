@@ -255,7 +255,7 @@ const PDFExtractor: React.FC = () => {
       {/* Header */}
       <div className="text-center">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">
-          PDF Data Extractor
+          PDF Data Extractor v2.0
         </h1>
         <p className="text-gray-600">
           Upload a PDF file and extract structured data with brand analysis
