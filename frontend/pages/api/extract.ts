@@ -216,6 +216,8 @@ async function extractHandler(req: NextApiRequest, res: NextApiResponse) {
             outputType: outputType,
             processedAt: new Date().toISOString(),
             storageUrl: storageUrl,
+            ocrProvider: extractionResult.provider || 'unknown',
+            extractedTextLength: extractionResult.extractedText?.length || 0,
             formattingStatus: {
               formattedData: !!formattedData,
               summary: !!summary,
