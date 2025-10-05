@@ -320,9 +320,10 @@ export class NanonetsExtractionService {
       }
 
       // Try multiple OCR providers in order of preference
+      // Nanonets first - better for pharmaceutical document extraction
       const providers = [
-        { name: 'OCR.space', method: this.tryOCRSpaceAPI.bind(this) },
         { name: 'Nanonets', method: this.tryNanonetsOCR.bind(this) },
+        { name: 'OCR.space', method: this.tryOCRSpaceAPI.bind(this) },
         { name: 'Fallback', method: this.tryFallbackOCR.bind(this) }
       ];
 
