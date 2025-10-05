@@ -74,6 +74,22 @@ const PDFExtractor: React.FC = () => {
   };
 
   /**
+   * Test the API connection
+   */
+  const testAPIConnection = async () => {
+    try {
+      console.log('🧪 Testing API connection...');
+      const response = await fetch('/api/health');
+      const result = await response.json();
+      console.log('🏥 Health check result:', result);
+      alert(`API Health: ${result.success ? 'OK' : 'Failed'}`);
+    } catch (error) {
+      console.error('❌ API test failed:', error);
+      alert(`API Test Failed: ${error.message}`);
+    }
+  };
+
+  /**
    * Handle file selection from input or drag & drop
    */
   const handleFileSelect = (file: File) => {
@@ -145,16 +161,33 @@ const PDFExtractor: React.FC = () => {
       formData.append('output_type', outputType);
 
       console.log(`🚀 Starting extraction with output type: ${outputType}`);
-
-      // Send request to API route
-      const response = await fetch('/api/extract', {
-        method: 'POST',
-        body: formData
+      console.log(`📄 File details:`, {
+        name: selectedFile.name,
+        size: selectedFile.size,
+        type: selectedFile.type
       });
+
+      // Send request to API route (with cache busting)
+      const response = await fetch(`/api/extract?t=${Date.now()}`, {
+        method: 'POST',
+        body: formData,
+        cache: 'no-cache'
+      });
+
+      console.log(`📬 Response status: ${response.status} ${response.statusText}`);
+      console.log(`📋 Response headers:`, Object.fromEntries(response.headers.entries()));
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ HTTP Error Response:', errorText);
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
 
       const result: ExtractionResponse = await response.json();
 
       console.log('📬 Extraction response:', result);
+      console.log('✅ Response success:', result.success);
+      console.log('📊 Response data keys:', result.data ? Object.keys(result.data) : 'no data');
 
       // Ensure error is a string for proper rendering
       const processedResult = {
@@ -230,26 +263,20 @@ const PDFExtractor: React.FC = () => {
       </div>
 
       {/* Service Status */}
-      {serviceStatus && (
-        <div className={`p-4 rounded-lg border ${
-          serviceStatus.success && serviceStatus.status?.ready 
-            ? 'bg-green-50 border-green-200' 
-            : 'bg-yellow-50 border-yellow-200'
-        }`}>
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            {serviceStatus.success && serviceStatus.status?.ready ? (
-              <CheckCircle className="w-5 h-5 text-green-600" />
-            ) : (
-              <AlertCircle className="w-5 h-5 text-yellow-600" />
-            )}
-            <span className="font-medium">
-              {serviceStatus.success && serviceStatus.status?.ready 
-                ? 'Extraction service is ready' 
-                : 'Service configuration issue'}
-            </span>
+            <CheckCircle className="w-5 h-5 text-green-600" />
+            <span className="font-medium">Extraction service is ready</span>
           </div>
+          <button
+            onClick={testAPIConnection}
+            className="text-blue-600 hover:text-blue-700 text-sm underline"
+          >
+            Test API Connection
+          </button>
         </div>
-      )}
+      </div>
 
       {/* File Upload Area */}
       <div

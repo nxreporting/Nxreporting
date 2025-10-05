@@ -100,16 +100,28 @@ async function extractHandler(req: NextApiRequest, res: NextApiResponse) {
         console.warn('⚠️ Cloud storage upload error, proceeding with buffer processing:', uploadError);
       }
 
-      // Extract data using Nanonets service with timeout
+      // Extract data using OCR service with timeout
       console.log('🔬 Starting PDF extraction with timeout protection...');
+      console.log('🔧 Using updated OCR service (OCR.space + Nanonets fallback)');
+      
       const extractionResult = await withTimeout(
         nanonetsService.extractFromBuffer(fileBuffer, file.originalFilename || 'document.pdf', outputType as any),
         40000, // 40 second timeout (leave 5s buffer for response)
         'PDF extraction timed out'
       );
+      
+      console.log('📊 Extraction result:', { 
+        success: extractionResult.success, 
+        provider: extractionResult.provider,
+        hasData: !!extractionResult.data,
+        hasText: !!extractionResult.extractedText,
+        textLength: extractionResult.extractedText?.length || 0
+      });
 
       if (extractionResult.success) {
         console.log('✅ PDF extraction completed successfully');
+        console.log(`📊 Provider used: ${extractionResult.provider || 'unknown'}`);
+        console.log(`📜 Text extracted: ${extractionResult.extractedText?.length || 0} characters`);
         
         // Format the data for better readability with timeout protection
         let formattedData = null;
@@ -190,12 +202,26 @@ async function extractHandler(req: NextApiRequest, res: NextApiResponse) {
         sendSuccess(res, responseData);
       } else {
         console.error('❌ PDF extraction failed:', extractionResult.error);
+        console.error('🔍 Provider attempted:', extractionResult.provider || 'unknown');
+        console.error('🔍 Raw response:', extractionResult.rawResponse);
         
-        sendError(res, extractionResult.error || 'PDF extraction failed', 500, 'EXTRACTION_FAILED', {
+        // Provide more helpful error message
+        let userFriendlyError = extractionResult.error || 'PDF extraction failed';
+        if (extractionResult.error?.includes('OCR.space')) {
+          userFriendlyError = 'OCR service temporarily unavailable. Please try again in a moment.';
+        } else if (extractionResult.error?.includes('Nanonets')) {
+          userFriendlyError = 'PDF processing service configuration issue. Please contact support.';
+        } else if (extractionResult.error?.includes('All OCR providers failed')) {
+          userFriendlyError = 'All PDF processing services are currently unavailable. Please try again later.';
+        }
+        
+        sendError(res, userFriendlyError, 500, 'EXTRACTION_FAILED', {
           originalFilename: file.originalFilename,
           fileSize: file.size,
           outputType: outputType,
-          processedAt: new Date().toISOString()
+          processedAt: new Date().toISOString(),
+          provider: extractionResult.provider,
+          technicalError: process.env.NODE_ENV === 'development' ? extractionResult.error : undefined
         });
       }
     }, {
