@@ -12,14 +12,9 @@
       "dest": "frontend/$1"
     }
   ],
-  "env": {
-    "DATABASE_URL": "@database_url",
-    "JWT_SECRET": "@jwt_secret",
-    "NANONETS_API_KEY": "@nanonets_api_key"
-  },
-  "build": {
-    "env": {
-      "DATABASE_URL": "@database_url"
+  "functions": {
+    "frontend/pages/api/**/*.ts": {
+      "maxDuration": 45
     }
   }
 }
