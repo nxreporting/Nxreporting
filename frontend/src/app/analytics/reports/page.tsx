@@ -204,8 +204,16 @@ export default function ReportsAnalyticsPage() {
           {analytics?.reports.length === 0 ? (
             <div className="p-8 text-center text-gray-500">
               <Package className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-              <p>No stock reports found</p>
-              <p className="text-sm">Upload some PDFs to see analytics here</p>
+              <p className="text-lg font-medium mb-2">No stock reports found</p>
+              <p className="text-sm mb-4">Upload some PDFs to see analytics here</p>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-md mx-auto">
+                <p className="text-blue-800 text-sm">
+                  📝 <strong>Get Started:</strong><br/>
+                  1. Go to <a href="/pdf-extract" className="underline text-blue-600">/pdf-extract</a><br/>
+                  2. Upload a stock report PDF<br/>
+                  3. Data will automatically save and appear here
+                </p>
+              </div>
             </div>
           ) : (
             <div className="overflow-x-auto">
