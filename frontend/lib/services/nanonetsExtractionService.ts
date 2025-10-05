@@ -53,6 +53,8 @@ export class NanonetsExtractionService {
       formData.append('output_type', outputType || 'markdown');
 
       console.log(`📡 Making request to Nanonets extraction API...`);
+      console.log(`🔑 API Key configured: ${this.apiKey ? 'Yes' : 'No'}`);
+      console.log(`📄 File size: ${fileBuffer.length} bytes`);
 
       const response = await fetch(this.extractionUrl, {
         method: 'POST',
@@ -67,17 +69,26 @@ export class NanonetsExtractionService {
       if (response.ok) {
         const responseData = await response.json();
         console.log('✅ Nanonets extraction successful!');
-        console.log('📊 Response keys:', Object.keys(responseData));
+        console.log('📊 Response type:', typeof responseData);
+        console.log('📊 Response keys:', responseData ? Object.keys(responseData) : 'null');
         
-        // Extract text from the response
-        const extractedText = this.extractTextFromNanonetsExtractionAPI(responseData);
-        console.log('📜 Extracted text length:', extractedText.length);
-        console.log('📜 Extracted text preview:', extractedText.substring(0, 300));
+        // Extract text from the response with error handling
+        let extractedText = '';
+        try {
+          extractedText = this.extractTextFromNanonetsExtractionAPI(responseData);
+          console.log('📜 Extracted text length:', extractedText?.length || 0);
+          if (extractedText && extractedText.length > 0) {
+            console.log('📜 Extracted text preview:', extractedText.substring(0, 300));
+          }
+        } catch (textError: any) {
+          console.error('❌ Error extracting text:', textError.message);
+          extractedText = JSON.stringify(responseData, null, 2);
+        }
         
         return {
           success: true,
           data: responseData,
-          extractedText: extractedText,
+          extractedText: extractedText || 'No text extracted',
           rawResponse: responseData,
           provider: 'Nanonets'
         };
@@ -88,7 +99,8 @@ export class NanonetsExtractionService {
       }
 
     } catch (error: any) {
-      console.log(`❌ Nanonets extraction error: ${error.message}`);
+      console.error(`❌ Nanonets extraction error:`, error);
+      console.error(`❌ Error stack:`, error.stack);
       throw error;
     }
   }
