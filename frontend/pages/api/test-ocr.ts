@@ -14,11 +14,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.log('OCR.space key:', ocrSpaceKey ? 'Configured' : 'Missing');
     console.log('Nanonets key:', nanonetsKey ? 'Configured' : 'Missing');
     
-    // Test OCR.space with a simple text image URL
-    const testImageUrl = 'https://www.learningcontainer.com/wp-content/uploads/2019/09/sample-ocr-file.jpg';
+    // Test OCR.space with a simple base64 image (avoids file type detection issues)
+    const testBase64Image = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
     
     const formData = new FormData();
-    formData.append('url', testImageUrl);
+    formData.append('base64Image', testBase64Image);
     formData.append('apikey', ocrSpaceKey || 'helloworld');
     formData.append('language', 'eng');
     formData.append('isOverlayRequired', 'false');
