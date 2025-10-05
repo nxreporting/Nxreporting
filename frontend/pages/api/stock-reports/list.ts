@@ -50,14 +50,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         
         // Try to get data from simple storage
         try {
-          const simpleResponse = await fetch(`${process.env.VERCEL_URL || 'http://localhost:3000'}/api/stock-reports/save-simple`);
-          const simpleData = await simpleResponse.json();
+          const { SimpleStorage } = await import('../../../lib/simple-storage');
+          const reports = SimpleStorage.getReports();
           
-          if (simpleData.success && simpleData.data.reports.length > 0) {
-            console.log(`✅ Found ${simpleData.data.reports.length} reports in simple storage`);
+          if (reports.length > 0) {
+            console.log(`✅ Found ${reports.length} reports in simple storage`);
             
             return sendSuccess(res, {
-              reports: simpleData.data.reports.map((report: any) => ({
+              reports: reports.map((report: any) => ({
                 report_id: report.id,
                 company_name: report.company_name,
                 report_title: report.report_title,
@@ -70,15 +70,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 avg_item_price: 0
               })),
               pagination: {
-                total: simpleData.data.reports.length,
+                total: reports.length,
                 limit: 10,
                 offset: 0,
                 hasMore: false
               },
-              companies: [...new Set(simpleData.data.reports.map((r: any) => r.company_name))],
+              companies: SimpleStorage.getCompanies(),
               summary: {
-                totalReports: simpleData.data.reports.length,
-                companiesCount: [...new Set(simpleData.data.reports.map((r: any) => r.company_name))].length
+                totalReports: reports.length,
+                companiesCount: SimpleStorage.getCompanies().length
               },
               storageType: 'simple'
             });
