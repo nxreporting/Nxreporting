@@ -3,6 +3,7 @@ import formidable from 'formidable';
 import { promises as fs } from 'fs';
 import { nanonetsService } from '../../lib/services/nanonetsExtractionService';
 import { DataFormatter } from '../../lib/utils/dataFormatter';
+import { TextParser } from '../../lib/utils/textParser';
 import { uploadFile, validateFile, generateSafeFilename } from '../../lib/storage';
 import { withTimeout, executeWithLimits, checkMemoryUsage } from '../../lib/timeout';
 import { 
@@ -134,8 +135,33 @@ async function extractHandler(req: NextApiRequest, res: NextApiResponse) {
           console.log('🔄 Starting data formatting...');
           checkMemoryUsage();
           
+          // Check if we have raw text that needs parsing first
+          let dataToFormat = extractionResult.data;
+          
+          // If the data doesn't have structured fields but we have extracted text, parse it
+          const hasStructuredData = dataToFormat && (
+            Object.keys(dataToFormat).some(key => key.startsWith('item_')) ||
+            dataToFormat.company_name ||
+            dataToFormat.Company_Name
+          );
+          
+          if (!hasStructuredData && extractionResult.extractedText) {
+            console.log('🔄 Raw text detected, parsing into structured format...');
+            console.log('📄 Text preview:', extractionResult.extractedText.substring(0, 200) + '...');
+            
+            try {
+              const parsedData = TextParser.parseStockReportText(extractionResult.extractedText);
+              console.log('✅ Text parsing completed, found fields:', Object.keys(parsedData).length);
+              console.log('📊 Sample parsed fields:', Object.keys(parsedData).slice(0, 10));
+              dataToFormat = parsedData;
+            } catch (parseError) {
+              console.error('❌ Text parsing failed:', parseError);
+              // Continue with original data
+            }
+          }
+          
           formattedData = await withTimeout(
-            Promise.resolve(DataFormatter.formatStockReport(extractionResult.data)),
+            Promise.resolve(DataFormatter.formatStockReport(dataToFormat)),
             5000,
             'Data formatting timed out'
           );
