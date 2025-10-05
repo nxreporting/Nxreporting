@@ -207,7 +207,9 @@ const PDFExtractor: React.FC = () => {
         // Automatically save to database if extraction was successful and has formatted data
         if (result.data?.formattedData?.items && result.data.formattedData.items.length > 0) {
           console.log('💾 Saving extracted data to database...');
-          saveToDatabase(result.data, result.metadata);
+          await saveToDatabase(result.data, result.metadata);
+        } else {
+          console.log('⚠️ No formatted data to save - skipping database save');
         }
       } else {
         console.error('❌ Extraction failed:', result.error);
@@ -229,8 +231,26 @@ const PDFExtractor: React.FC = () => {
    */
   const saveToDatabase = async (data: any, metadata: any) => {
     try {
-      console.log('💾 Sending data to database...');
+      console.log('💾 Initializing database and saving data...');
       
+      // First, initialize database tables
+      console.log('🔧 Initializing database tables...');
+      const initResponse = await fetch('/api/init-database', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      const initResult = await initResponse.json();
+      if (initResult.success) {
+        console.log('✅ Database initialized successfully');
+      } else {
+        console.warn('⚠️ Database initialization had issues:', initResult.error);
+      }
+
+      // Now save the data
+      console.log('💾 Saving data to database...');
       const response = await fetch('/api/stock-reports/save', {
         method: 'POST',
         headers: {
@@ -247,15 +267,17 @@ const PDFExtractor: React.FC = () => {
 
       if (result.success) {
         console.log('✅ Data saved to database successfully');
-        console.log('📊 Report ID:', result.data.reportId);
+        console.log('📊 Report ID:', result.data?.reportId);
         
-        // You could show a success notification here
-        // For now, we'll just log it
+        // Show success message to user
+        alert(`✅ Data saved successfully!\nReport ID: ${result.data?.reportId}\nGo to Analytics to view your data.`);
       } else {
         console.error('❌ Failed to save to database:', result.error);
+        alert(`❌ Failed to save data: ${result.error}`);
       }
     } catch (error) {
       console.error('❌ Error saving to database:', error);
+      alert(`❌ Error saving to database: ${error}`);
     }
   };
 
