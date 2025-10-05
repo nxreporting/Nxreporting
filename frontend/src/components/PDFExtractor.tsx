@@ -441,6 +441,23 @@ const PDFExtractor: React.FC = () => {
             </div>
           )}
 
+          {/* Debug Data Structure */}
+          {extractionResult.success && (
+            <div className="border border-blue-200 rounded-lg bg-blue-50 p-4 mb-4">
+              <h4 className="font-medium text-blue-900 mb-2">🔍 Debug: Data Structure</h4>
+              <div className="text-sm space-y-1">
+                <div>Has formattedData: {extractionResult.formattedData ? '✅ Yes' : '❌ No'}</div>
+                <div>Has items: {extractionResult.formattedData?.items ? '✅ Yes' : '❌ No'}</div>
+                <div>Items length: {extractionResult.formattedData?.items?.length || 0}</div>
+                <div>Items type: {typeof extractionResult.formattedData?.items}</div>
+                <div>Company name: {extractionResult.formattedData?.company?.name || 'Not found'}</div>
+                {extractionResult.formattedData?.items && (
+                  <div>First item: {JSON.stringify(extractionResult.formattedData.items[0])}</div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Stock Report Table */}
           {extractionResult.success && extractionResult.formattedData?.items && extractionResult.formattedData.items.length > 0 && (
             <div className="border border-gray-200 rounded-lg">
