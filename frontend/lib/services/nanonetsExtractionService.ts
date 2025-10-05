@@ -188,20 +188,34 @@ export class NanonetsExtractionService {
     // Create proper FormData for serverless environment
     const formData = new FormData();
     
-    // Convert Buffer to Blob properly for browser FormData
-    const uint8Array = new Uint8Array(fileBuffer);
-    const blob = new Blob([uint8Array], { type: 'application/pdf' });
-    
-    formData.append('file', blob, filename);
-    formData.append('apikey', ocrSpaceApiKey);
-    formData.append('language', 'eng');
-    formData.append('isOverlayRequired', 'false');
-    formData.append('detectOrientation', 'false');
-    formData.append('scale', 'true');
-    formData.append('OCREngine', '2'); // Use OCR Engine 2 for better accuracy
-    formData.append('filetype', 'PDF'); // Explicitly specify file type for PDFs
-    formData.append('isCreateSearchablePdf', 'false'); // Don't create searchable PDF
-    formData.append('isSearchablePdfHideTextLayer', 'false'); // Standard processing
+    // For PDF files, use base64 encoding which is more reliable with OCR.space
+    if (filename.toLowerCase().endsWith('.pdf')) {
+      console.log('📄 Processing PDF file with base64 encoding...');
+      const base64Data = fileBuffer.toString('base64');
+      const base64String = `data:application/pdf;base64,${base64Data}`;
+      
+      formData.append('base64Image', base64String);
+      formData.append('apikey', ocrSpaceApiKey);
+      formData.append('language', 'eng');
+      formData.append('isOverlayRequired', 'false');
+      formData.append('detectOrientation', 'false');
+      formData.append('scale', 'true');
+      formData.append('OCREngine', '2'); // Use OCR Engine 2 for better accuracy
+      formData.append('filetype', 'PDF'); // Explicitly specify file type for PDFs
+    } else {
+      console.log('🖼️ Processing image file with blob...');
+      // Convert Buffer to Blob for image files
+      const uint8Array = new Uint8Array(fileBuffer);
+      const blob = new Blob([uint8Array], { type: 'application/pdf' });
+      
+      formData.append('file', blob, filename);
+      formData.append('apikey', ocrSpaceApiKey);
+      formData.append('language', 'eng');
+      formData.append('isOverlayRequired', 'false');
+      formData.append('detectOrientation', 'false');
+      formData.append('scale', 'true');
+      formData.append('OCREngine', '2'); // Use OCR Engine 2 for better accuracy
+    }
 
     console.log('📡 Making OCR.space request...');
 
