@@ -156,7 +156,17 @@ const PDFExtractor: React.FC = () => {
 
       console.log('📬 Extraction response:', result);
 
-      setExtractionResult(result);
+      // Ensure error is a string for proper rendering
+      const processedResult = {
+        ...result,
+        error: result.error 
+          ? (typeof result.error === 'string' 
+              ? result.error 
+              : result.error.message || 'An error occurred')
+          : undefined
+      };
+
+      setExtractionResult(processedResult);
 
       if (result.success) {
         console.log('✅ Extraction completed successfully');
@@ -363,7 +373,9 @@ const PDFExtractor: React.FC = () => {
             </div>
             {extractionResult.error && (
               <p className="text-red-700 mt-2 text-sm">
-                {extractionResult.error}
+                {typeof extractionResult.error === 'string' 
+                  ? extractionResult.error 
+                  : extractionResult.error.message || 'An error occurred'}
               </p>
             )}
           </div>
