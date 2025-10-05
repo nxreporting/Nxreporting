@@ -22,7 +22,7 @@ JWT_SECRET = your_secure_jwt_secret_key_here_make_it_long_and_random_12345
 
 # API Keys
 NANONETS_API_KEY = your_nanonets_api_key_here
-OCR_SPACE_API_KEY = helloworld
+OCR_SPACE_API_KEY = K82877653688957
 OPENAI_API_KEY = your_openai_api_key_here
 HUGGINGFACE_API_TOKEN = your_huggingface_token_here
 

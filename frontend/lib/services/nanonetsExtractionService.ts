@@ -200,6 +200,8 @@ export class NanonetsExtractionService {
     formData.append('scale', 'true');
     formData.append('OCREngine', '2'); // Use OCR Engine 2 for better accuracy
     formData.append('filetype', 'PDF'); // Explicitly specify file type for PDFs
+    formData.append('isCreateSearchablePdf', 'false'); // Don't create searchable PDF
+    formData.append('isSearchablePdfHideTextLayer', 'false'); // Standard processing
 
     console.log('📡 Making OCR.space request...');
 

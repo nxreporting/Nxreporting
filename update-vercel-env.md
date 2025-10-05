@@ -15,7 +15,7 @@ Go to your Vercel dashboard:
 
 ```
 Variable Name: OCR_SPACE_API_KEY
-Value: helloworld
+Value: K82877653688957
 Environment: Production, Preview, Development
 ```
 
