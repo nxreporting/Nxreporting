@@ -65,17 +65,21 @@ export class TextParser {
    */
   private static parseDirectStructure(rawText: string, result: ParsedStockData): void {
     console.log('🔄 Parsing actual tabular OCR data...');
-    console.log('📄 Raw text preview:', rawText.substring(0, 500) + '...');
+    console.log('📄 Raw text length:', rawText.length);
+    console.log('📄 Raw text preview:', rawText.substring(0, 1000));
     
     try {
       // Split text into lines and clean them
       const lines = rawText.split('\n').map(line => line.trim()).filter(line => line.length > 0);
       console.log(`📄 Processing ${lines.length} lines of OCR text`);
+      console.log('📄 First 20 lines:', lines.slice(0, 20));
       
       // Parse tabular data where item names and numbers are on the same line
       const itemData: Array<{name: string, numbers: number[]}> = [];
       
-      for (const line of lines) {
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        
         // Skip header lines and company info
         if (line.includes('MEDICINES') || line.includes('Stock Report') || 
             line.includes('Statement') || line.includes('TO') ||
@@ -92,18 +96,40 @@ export class TextParser {
           const itemName = itemMatch[1].trim();
           const numbersText = itemMatch[3];
           
+          console.log(`🔍 Found item line: "${line}"`);
+          console.log(`📦 Item name: "${itemName}"`);
+          console.log(`🔢 Numbers text: "${numbersText}"`);
+          
           // Extract all numbers from the rest of the line
           const numbers = numbersText.match(/\d+\.?\d*/g);
           if (numbers) {
             const numericValues = numbers.map(n => parseFloat(n)).filter(n => !isNaN(n));
+            
+            console.log(`📊 Extracted ${numericValues.length} numbers:`, numericValues);
             
             if (numericValues.length >= 9) {
               itemData.push({
                 name: itemName,
                 numbers: numericValues
               });
-              console.log(`📦 Found item: ${itemName} with ${numericValues.length} values`);
+              console.log(`✅ Added item: ${itemName} with ${numericValues.length} values`);
+            } else if (numericValues.length > 0) {
+              // Try to get more numbers from next lines
+              const additionalNumbers = this.extractNumbersAfterItem(lines, i);
+              const allNumbers = [...numericValues, ...additionalNumbers];
+              
+              if (allNumbers.length >= 9) {
+                itemData.push({
+                  name: itemName,
+                  numbers: allNumbers.slice(0, 9)
+                });
+                console.log(`✅ Added item with additional numbers: ${itemName}`);
+              } else {
+                console.log(`⚠️ Insufficient numbers for ${itemName}: ${allNumbers.length}`);
+              }
             }
+          } else {
+            console.log(`⚠️ No numbers found in: "${numbersText}"`);
           }
         }
       }
@@ -112,6 +138,7 @@ export class TextParser {
       
       if (itemData.length === 0) {
         console.log('⚠️ No structured items found, trying alternative parsing...');
+        console.log('📄 Full OCR text for debugging:', rawText);
         this.parseAlternativeFormat(rawText, result);
         return;
       }
