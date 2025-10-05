@@ -17,6 +17,7 @@ export interface NanonetsResponse {
  */
 export class NanonetsExtractionService {
   private apiKey: string;
+  private extractionUrl: string = 'https://extraction-api.nanonets.com/extract';
   private baseUrl: string = 'https://app.nanonets.com/api/v2/OCR/Model';
   private defaultModelId: string = 'bd442c54-71de-4057-a0b8-91c4c8b5e5e1'; // Default OCR model
 
@@ -40,80 +41,94 @@ export class NanonetsExtractionService {
       throw new Error('Nanonets API key not configured');
     }
 
-    console.log('🔧 Trying Nanonets OCR with corrected configuration...');
+    console.log('🔧 Trying Nanonets extraction API...');
+    console.log('📡 Using endpoint:', this.extractionUrl);
 
-    // Try multiple approaches for Nanonets
-    const attempts = [
-      {
-        name: 'Default OCR Model',
-        modelId: this.defaultModelId,
-        url: `${this.baseUrl}/${this.defaultModelId}/LabelFile/`
-      },
-      {
-        name: 'Create New Model',
-        modelId: null,
-        url: null
+    try {
+      // Use the correct Nanonets extraction API endpoint
+      const formData = new FormData();
+      const uint8Array = new Uint8Array(fileBuffer);
+      const blob = new Blob([uint8Array], { type: 'application/pdf' });
+      formData.append('file', blob, filename);
+      formData.append('output_type', outputType || 'markdown');
+
+      console.log(`📡 Making request to Nanonets extraction API...`);
+
+      const response = await fetch(this.extractionUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+        },
+        body: formData
+      });
+
+      console.log(`📬 Response: ${response.status} ${response.statusText}`);
+
+      if (response.ok) {
+        const responseData = await response.json();
+        console.log('✅ Nanonets extraction successful!');
+        console.log('📊 Response keys:', Object.keys(responseData));
+        
+        // Extract text from the response
+        const extractedText = this.extractTextFromNanonetsExtractionAPI(responseData);
+        console.log('📜 Extracted text length:', extractedText.length);
+        console.log('📜 Extracted text preview:', extractedText.substring(0, 300));
+        
+        return {
+          success: true,
+          data: responseData,
+          extractedText: extractedText,
+          rawResponse: responseData,
+          provider: 'Nanonets'
+        };
+      } else {
+        const errorText = await response.text();
+        console.log(`❌ Nanonets HTTP error: ${response.status} - ${errorText}`);
+        throw new Error(`Nanonets extraction failed: ${response.status} - ${errorText}`);
       }
-    ];
 
-    for (const attempt of attempts) {
-      try {
-        console.log(`🔄 Attempting: ${attempt.name}`);
-
-        if (attempt.name === 'Create New Model') {
-          // Try to create a new model first
-          const newModelId = await this.createNewModel();
-          if (!newModelId) continue;
-          
-          attempt.modelId = newModelId;
-          attempt.url = `${this.baseUrl}/${newModelId}/LabelFile/`;
-        }
-
-        const formData = new FormData();
-        const uint8Array = new Uint8Array(fileBuffer);
-        const blob = new Blob([uint8Array], { type: 'application/pdf' });
-        formData.append('file', blob, filename);
-
-        console.log(`📡 Making request to: ${attempt.url}`);
-
-        const response = await fetch(attempt.url!, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Basic ${Buffer.from(this.apiKey + ':').toString('base64')}`,
-          },
-          body: formData
-        });
-
-        console.log(`📬 Response: ${response.status} ${response.statusText}`);
-
-        if (response.ok) {
-          const responseData = await response.json();
-          console.log('✅ Nanonets OCR successful!');
-          console.log('📊 Nanonets response data:', JSON.stringify(responseData).substring(0, 500));
-          
-          const extractedText = this.extractTextFromNanonetsResponse(responseData);
-          console.log('📜 Extracted text length:', extractedText.length);
-          console.log('📜 Extracted text preview:', extractedText.substring(0, 200));
-          
-          return {
-            success: true,
-            data: responseData,
-            extractedText: extractedText,
-            rawResponse: responseData,
-            provider: 'Nanonets'
-          };
-        } else {
-          const errorText = await response.text();
-          console.log(`❌ Nanonets HTTP error: ${response.status} - ${errorText}`);
-          console.log(`❌ ${attempt.name} failed: ${response.status} - ${errorText}`);
-        }
-
-      } catch (error: any) {
-        console.log(`❌ ${attempt.name} error: ${error.message}`);
-      }
+    } catch (error: any) {
+      console.log(`❌ Nanonets extraction error: ${error.message}`);
+      throw error;
     }
+  }
 
-    throw new Error('All Nanonets attempts failed');
+  /**
+   * Extract text from Nanonets extraction API response
+   */
+  private extractTextFromNanonetsExtractionAPI(responseData: any): string {
+    try {
+      console.log('🔍 Extracting text from Nanonets extraction API response...');
+      
+      // The extraction API returns text in different formats
+      if (responseData.text) {
+        return responseData.text;
+      }
+      
+      if (responseData.content) {
+        return responseData.content;
+      }
+      
+      if (responseData.extracted_text) {
+        return responseData.extracted_text;
+      }
+      
+      if (responseData.data && responseData.data.text) {
+        return responseData.data.text;
+      }
+      
+      // If structured data, try to extract text from it
+      if (responseData.data && typeof responseData.data === 'object') {
+        return JSON.stringify(responseData.data, null, 2);
+      }
+      
+      console.warn('⚠️ Could not find text in Nanonets response, returning full response');
+      return JSON.stringify(responseData, null, 2);
+      
+    } catch (error) {
+      console.warn('⚠️ Error extracting text from Nanonets response:', error);
+      return JSON.stringify(responseData, null, 2);
+    }
   }
 
   /**
