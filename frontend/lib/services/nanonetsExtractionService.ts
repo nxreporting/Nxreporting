@@ -89,15 +89,22 @@ export class NanonetsExtractionService {
         if (response.ok) {
           const responseData = await response.json();
           console.log('✅ Nanonets OCR successful!');
+          console.log('📊 Nanonets response data:', JSON.stringify(responseData).substring(0, 500));
+          
+          const extractedText = this.extractTextFromNanonetsResponse(responseData);
+          console.log('📜 Extracted text length:', extractedText.length);
+          console.log('📜 Extracted text preview:', extractedText.substring(0, 200));
           
           return {
             success: true,
             data: responseData,
-            extractedText: this.extractTextFromNanonetsResponse(responseData),
-            rawResponse: responseData
+            extractedText: extractedText,
+            rawResponse: responseData,
+            provider: 'Nanonets'
           };
         } else {
           const errorText = await response.text();
+          console.log(`❌ Nanonets HTTP error: ${response.status} - ${errorText}`);
           console.log(`❌ ${attempt.name} failed: ${response.status} - ${errorText}`);
         }
 
@@ -330,10 +337,21 @@ export class NanonetsExtractionService {
       for (const provider of providers) {
         try {
           console.log(`🔄 Trying ${provider.name}...`);
+          console.log(`📊 Provider method:`, provider.method.name);
+          
           const result = await provider.method(fileBuffer, filename, outputType);
+          
+          console.log(`📊 ${provider.name} result:`, {
+            success: result.success,
+            hasData: !!result.data,
+            hasText: !!result.extractedText,
+            textLength: result.extractedText?.length || 0,
+            error: result.error
+          });
           
           if (result.success) {
             console.log(`✅ ${provider.name} succeeded!`);
+            console.log(`📜 Extracted text preview:`, result.extractedText?.substring(0, 200));
             result.provider = provider.name;
             return result;
           } else {
@@ -341,6 +359,7 @@ export class NanonetsExtractionService {
           }
         } catch (providerError: any) {
           console.log(`❌ ${provider.name} error: ${providerError.message}`);
+          console.log(`📊 Error stack:`, providerError.stack);
         }
       }
 
