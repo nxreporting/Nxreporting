@@ -40,18 +40,31 @@ export default function ReportsAnalyticsPage() {
   const fetchReports = async () => {
     try {
       setLoading(true);
+      console.log('🔄 Fetching reports from API...');
+      
       const response = await fetch(`/api/stock-reports/list?company=${selectedCompany}&limit=20`);
+      console.log('📡 Response status:', response.status);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
       const result = await response.json();
+      console.log('📊 API Result:', result);
 
       if (result.success) {
         setAnalytics(result.data);
         setError(null);
+        console.log('✅ Data loaded successfully');
       } else {
-        setError(result.error || 'Failed to fetch reports');
+        const errorMsg = result.error || 'Failed to fetch reports';
+        console.error('❌ API Error:', errorMsg);
+        setError(errorMsg);
       }
-    } catch (err) {
-      setError('Network error occurred');
-      console.error('Error fetching reports:', err);
+    } catch (err: any) {
+      const errorMsg = `Network error: ${err.message}`;
+      console.error('❌ Fetch Error:', err);
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -91,18 +104,45 @@ export default function ReportsAnalyticsPage() {
     );
   }
 
+  const testConnection = async () => {
+    try {
+      console.log('🔍 Testing connection...');
+      const response = await fetch('/api/test-connection');
+      const result = await response.json();
+      console.log('🔗 Connection test result:', result);
+      alert(`Connection test: ${result.success ? 'SUCCESS' : 'FAILED'}\n${result.message || result.error}`);
+    } catch (err) {
+      console.error('❌ Connection test failed:', err);
+      alert(`Connection test failed: ${err}`);
+    }
+  };
+
   if (error) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
+        <div className="text-center max-w-md">
           <div className="text-red-600 text-xl mb-4">⚠️ Error</div>
-          <p className="text-gray-600">{error}</p>
-          <button 
-            onClick={fetchReports}
-            className="mt-4 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-          >
-            Retry
-          </button>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <div className="space-y-2">
+            <button 
+              onClick={fetchReports}
+              className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+            >
+              Retry
+            </button>
+            <button 
+              onClick={testConnection}
+              className="w-full bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700"
+            >
+              Test Connection
+            </button>
+          </div>
+          <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded text-sm text-blue-800">
+            <strong>Troubleshooting:</strong><br/>
+            1. Check if Supabase is configured<br/>
+            2. Verify environment variables<br/>
+            3. Try uploading a PDF first at <a href="/pdf-extract" className="underline">/pdf-extract</a>
+          </div>
         </div>
       </div>
     );
