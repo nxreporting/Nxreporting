@@ -49,16 +49,20 @@ export class NanonetsExtractionService {
       // Use the correct Nanonets extraction API endpoint
       const formData = new FormData();
       
-      // Append the file buffer directly (works in Node.js)
+      // Append the file buffer with proper options for Nanonets API
       formData.append('file', fileBuffer, {
         filename: filename,
-        contentType: 'application/pdf'
+        contentType: 'application/pdf',
+        knownLength: fileBuffer.length
       });
-      formData.append('output_type', outputType || 'markdown');
+      
+      // Don't send output_type - Nanonets extraction API doesn't use it
+      // formData.append('output_type', outputType || 'markdown');
 
       console.log(`📡 Making request to Nanonets extraction API...`);
       console.log(`🔑 API Key configured: ${this.apiKey ? 'Yes' : 'No'}`);
       console.log(`📄 File size: ${fileBuffer.length} bytes`);
+      console.log(`📄 Filename: ${filename}`);
 
       const response = await fetch(this.extractionUrl, {
         method: 'POST',
