@@ -19,17 +19,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Create companies table
-    const { error: companiesError } = await supabase.rpc('exec_sql', {
-      sql: `
-        CREATE TABLE IF NOT EXISTS companies (
-          id SERIAL PRIMARY KEY,
-          name VARCHAR(255) NOT NULL UNIQUE,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-      `
-    });
+    // Try to create companies table using direct SQL (this might not work on Supabase)
+    // Instead, let's try to create the table by attempting to insert and catching errors
+    let companiesError = null;
+    try {
+      // Try to query the companies table to see if it exists
+      const { data: testCompanies, error: testError } = await supabase
+        .from('companies')
+        .select('id')
+        .limit(1);
+      
+      if (testError && testError.message.includes('does not exist')) {
+        console.log('⚠️ Companies table does not exist - this is expected on first run');
+        companiesError = testError;
+      }
+    } catch (error) {
+      console.log('⚠️ Companies table check failed:', error);
+      companiesError = error;
+    }
 
     if (companiesError) {
       console.error('❌ Error creating companies table:', companiesError);

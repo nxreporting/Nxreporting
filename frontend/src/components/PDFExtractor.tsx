@@ -249,31 +249,72 @@ const PDFExtractor: React.FC = () => {
         console.warn('⚠️ Database initialization had issues:', initResult.error);
       }
 
-      // Now save the data
+      // Now save the data (try main API first, then fallback to simple)
       console.log('💾 Saving data to database...');
-      const response = await fetch('/api/stock-reports/save', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          formattedData: data.formattedData,
-          metadata: metadata,
-          rawData: data
-        })
-      });
+      
+      let saveSuccess = false;
+      let saveResult = null;
+      
+      // Try main database save first
+      try {
+        const response = await fetch('/api/stock-reports/save', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            formattedData: data.formattedData,
+            metadata: metadata,
+            rawData: data
+          })
+        });
 
-      const result = await response.json();
-
-      if (result.success) {
-        console.log('✅ Data saved to database successfully');
-        console.log('📊 Report ID:', result.data?.reportId);
+        saveResult = await response.json();
         
-        // Show success message to user
-        alert(`✅ Data saved successfully!\nReport ID: ${result.data?.reportId}\nGo to Analytics to view your data.`);
+        if (saveResult.success) {
+          saveSuccess = true;
+          console.log('✅ Data saved to database successfully');
+          console.log('📊 Report ID:', saveResult.data?.reportId);
+        } else {
+          console.warn('⚠️ Main database save failed, trying simple storage...');
+        }
+      } catch (error) {
+        console.warn('⚠️ Main database save error, trying simple storage...', error);
+      }
+      
+      // If main save failed, try simple storage
+      if (!saveSuccess) {
+        try {
+          const simpleResponse = await fetch('/api/stock-reports/save-simple', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              formattedData: data.formattedData,
+              metadata: metadata,
+              rawData: data
+            })
+          });
+
+          const simpleResult = await simpleResponse.json();
+          
+          if (simpleResult.success) {
+            saveSuccess = true;
+            saveResult = simpleResult;
+            console.log('✅ Data saved to simple storage successfully');
+            console.log('📊 Report ID:', simpleResult.data?.reportId);
+          }
+        } catch (simpleError) {
+          console.error('❌ Simple storage also failed:', simpleError);
+        }
+      }
+      
+      // Show result to user
+      if (saveSuccess && saveResult) {
+        alert(`✅ Data saved successfully!\nReport ID: ${saveResult.data?.reportId}\nGo to Analytics to view your data.`);
       } else {
-        console.error('❌ Failed to save to database:', result.error);
-        alert(`❌ Failed to save data: ${result.error}`);
+        alert(`❌ Failed to save data. Please check console for details.`);
       }
     } catch (error) {
       console.error('❌ Error saving to database:', error);

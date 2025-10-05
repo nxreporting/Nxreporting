@@ -111,30 +111,44 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const { formattedData, metadata, rawData } = stockReportData;
     const { company, report, items, summary } = formattedData;
 
-    // 1. Insert or get company
+    // 1. Insert or get company (with better error handling)
     console.log('🏢 Processing company:', company.name);
     
     let companyRecord;
-    const { data: existingCompany } = await supabase
-      .from('companies')
-      .select('id')
-      .eq('name', company.name)
-      .single();
-
-    if (existingCompany) {
-      companyRecord = existingCompany;
-    } else {
-      const { data: newCompany, error: companyError } = await supabase
+    try {
+      const { data: existingCompany, error: selectError } = await supabase
         .from('companies')
-        .insert({ name: company.name })
         .select('id')
+        .eq('name', company.name)
         .single();
 
-      if (companyError) {
-        console.error('❌ Error creating company:', companyError);
-        return sendError(res, 'Failed to create company record', 500);
+      if (selectError && !selectError.message.includes('No rows')) {
+        // Table might not exist
+        console.error('❌ Error querying companies table:', selectError);
+        return sendError(res, `Database table error: ${selectError.message}. Please ensure database is properly set up.`, 500);
       }
-      companyRecord = newCompany;
+
+      if (existingCompany) {
+        companyRecord = existingCompany;
+        console.log('✅ Found existing company:', companyRecord.id);
+      } else {
+        console.log('🆕 Creating new company...');
+        const { data: newCompany, error: companyError } = await supabase
+          .from('companies')
+          .insert({ name: company.name })
+          .select('id')
+          .single();
+
+        if (companyError) {
+          console.error('❌ Error creating company:', companyError);
+          return sendError(res, `Failed to create company record: ${companyError.message}`, 500);
+        }
+        companyRecord = newCompany;
+        console.log('✅ Created new company:', companyRecord.id);
+      }
+    } catch (error: any) {
+      console.error('❌ Company processing error:', error);
+      return sendError(res, `Company processing failed: ${error.message}`, 500);
     }
 
     // 2. Parse date range

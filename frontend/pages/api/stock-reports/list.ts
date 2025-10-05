@@ -38,7 +38,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return sendError(res, 'Unable to connect to database', 500, 'CONNECTION_ERROR');
     }
 
-    // Try to check if stock_reports table exists
+    // Try to check if stock_reports table exists, if not try simple storage
     try {
       const { data: reportsData, error: reportsError } = await supabase
         .from('stock_reports')
@@ -46,7 +46,47 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         .limit(10);
 
       if (reportsError) {
-        console.log('⚠️ Stock reports table not found, returning setup message');
+        console.log('⚠️ Stock reports table not found, trying simple storage...');
+        
+        // Try to get data from simple storage
+        try {
+          const simpleResponse = await fetch(`${process.env.VERCEL_URL || 'http://localhost:3000'}/api/stock-reports/save-simple`);
+          const simpleData = await simpleResponse.json();
+          
+          if (simpleData.success && simpleData.data.reports.length > 0) {
+            console.log(`✅ Found ${simpleData.data.reports.length} reports in simple storage`);
+            
+            return sendSuccess(res, {
+              reports: simpleData.data.reports.map((report: any) => ({
+                report_id: report.id,
+                company_name: report.company_name,
+                report_title: report.report_title,
+                date_range: report.date_range,
+                total_items: report.total_items,
+                total_sales_value: report.total_sales_value,
+                total_closing_value: report.total_closing_value,
+                processed_at: report.processed_at,
+                items_with_sales: 0,
+                avg_item_price: 0
+              })),
+              pagination: {
+                total: simpleData.data.reports.length,
+                limit: 10,
+                offset: 0,
+                hasMore: false
+              },
+              companies: [...new Set(simpleData.data.reports.map((r: any) => r.company_name))],
+              summary: {
+                totalReports: simpleData.data.reports.length,
+                companiesCount: [...new Set(simpleData.data.reports.map((r: any) => r.company_name))].length
+              },
+              storageType: 'simple'
+            });
+          }
+        } catch (simpleError) {
+          console.log('⚠️ Simple storage also failed:', simpleError);
+        }
+        
         return sendSuccess(res, {
           reports: [],
           pagination: {
