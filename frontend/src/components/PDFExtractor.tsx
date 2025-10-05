@@ -203,6 +203,12 @@ const PDFExtractor: React.FC = () => {
 
       if (result.success) {
         console.log('✅ Extraction completed successfully');
+        
+        // Automatically save to database if extraction was successful and has formatted data
+        if (result.data?.formattedData?.items && result.data.formattedData.items.length > 0) {
+          console.log('💾 Saving extracted data to database...');
+          saveToDatabase(result.data, result.metadata);
+        }
       } else {
         console.error('❌ Extraction failed:', result.error);
       }
@@ -215,6 +221,41 @@ const PDFExtractor: React.FC = () => {
       });
     } finally {
       setIsExtracting(false);
+    }
+  };
+
+  /**
+   * Save extracted data to database
+   */
+  const saveToDatabase = async (data: any, metadata: any) => {
+    try {
+      console.log('💾 Sending data to database...');
+      
+      const response = await fetch('/api/stock-reports/save', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          formattedData: data.formattedData,
+          metadata: metadata,
+          rawData: data
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        console.log('✅ Data saved to database successfully');
+        console.log('📊 Report ID:', result.data.reportId);
+        
+        // You could show a success notification here
+        // For now, we'll just log it
+      } else {
+        console.error('❌ Failed to save to database:', result.error);
+      }
+    } catch (error) {
+      console.error('❌ Error saving to database:', error);
     }
   };
 
