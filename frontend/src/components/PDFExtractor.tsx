@@ -441,31 +441,14 @@ const PDFExtractor: React.FC = () => {
             </div>
           )}
 
-          {/* Debug Data Structure */}
-          {extractionResult.success && (
-            <div className="border border-blue-200 rounded-lg bg-blue-50 p-4 mb-4">
-              <h4 className="font-medium text-blue-900 mb-2">🔍 Debug: Data Structure</h4>
-              <div className="text-sm space-y-1">
-                <div>Has formattedData: {extractionResult.formattedData ? '✅ Yes' : '❌ No'}</div>
-                <div>Has items: {extractionResult.formattedData?.items ? '✅ Yes' : '❌ No'}</div>
-                <div>Items length: {extractionResult.formattedData?.items?.length || 0}</div>
-                <div>Items type: {typeof extractionResult.formattedData?.items}</div>
-                <div>Company name: {extractionResult.formattedData?.company?.name || 'Not found'}</div>
-                {extractionResult.formattedData?.items && (
-                  <div>First item: {JSON.stringify(extractionResult.formattedData.items[0])}</div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Stock Report Table */}
-          {extractionResult.success && extractionResult.formattedData?.items && extractionResult.formattedData.items.length > 0 && (
+          {/* Stock Report Table - Fixed to use actual response structure */}
+          {extractionResult.success && extractionResult.data?.formattedData?.items && extractionResult.data.formattedData.items.length > 0 && (
             <div className="border border-gray-200 rounded-lg">
               <div className="bg-blue-50 px-4 py-3 border-b border-gray-200">
                 <div className="flex justify-between items-center">
-                  <h4 className="font-medium text-blue-900">📊 Stock Report - {extractionResult.formattedData.company?.name}</h4>
+                  <h4 className="font-medium text-blue-900">📊 Stock Report - {extractionResult.data?.formattedData?.company?.name}</h4>
                   <span className="text-sm text-blue-700">
-                    {extractionResult.formattedData.report?.dateRange}
+                    {extractionResult.data?.formattedData?.report?.dateRange}
                   </span>
                 </div>
               </div>
@@ -474,25 +457,25 @@ const PDFExtractor: React.FC = () => {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                   <div className="bg-blue-50 p-4 rounded-lg text-center">
                     <div className="text-2xl font-bold text-blue-600">
-                      {extractionResult.formattedData.summary?.totalItems || 0}
+                      {extractionResult.data?.formattedData?.summary?.totalItems || 0}
                     </div>
                     <div className="text-sm text-blue-700">Total Items</div>
                   </div>
                   <div className="bg-green-50 p-4 rounded-lg text-center">
                     <div className="text-2xl font-bold text-green-600">
-                      {extractionResult.formattedData.summary?.totalSalesQty || 0}
+                      {extractionResult.data?.formattedData?.summary?.totalSalesQty || 0}
                     </div>
                     <div className="text-sm text-green-700">Total Sales Qty</div>
                   </div>
                   <div className="bg-purple-50 p-4 rounded-lg text-center">
                     <div className="text-2xl font-bold text-purple-600">
-                      ₹{(extractionResult.formattedData.summary?.totalSalesValue || 0).toLocaleString()}
+                      ₹{(extractionResult.data?.formattedData?.summary?.totalSalesValue || 0).toLocaleString()}
                     </div>
                     <div className="text-sm text-purple-700">Total Sales Value</div>
                   </div>
                   <div className="bg-orange-50 p-4 rounded-lg text-center">
                     <div className="text-2xl font-bold text-orange-600">
-                      ₹{(extractionResult.formattedData.summary?.totalClosingValue || 0).toLocaleString()}
+                      ₹{(extractionResult.data?.formattedData?.summary?.totalClosingValue || 0).toLocaleString()}
                     </div>
                     <div className="text-sm text-orange-700">Total Closing Value</div>
                   </div>
@@ -527,7 +510,7 @@ const PDFExtractor: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {extractionResult.formattedData.items.map((item: any, index: number) => (
+                      {extractionResult.data?.formattedData?.items.map((item: any, index: number) => (
                         <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                           <td className="px-4 py-3 text-sm font-medium text-gray-900">
                             {item.name}
@@ -570,7 +553,7 @@ const PDFExtractor: React.FC = () => {
                     </span>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {extractionResult.formattedData.items
+                    {extractionResult.data?.formattedData?.items
                       .filter((item: any) => item.sales?.qty > 0 || item.sales?.value > 0)
                       .map((item: any, index: number) => (
                         <div key={index} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
@@ -611,7 +594,7 @@ const PDFExtractor: React.FC = () => {
                   <div className="bg-blue-50 p-4 rounded-lg">
                     <h5 className="font-medium text-blue-900 mb-2">🔝 Top Selling Items</h5>
                     <div className="space-y-1 text-sm">
-                      {extractionResult.formattedData.items
+                      {extractionResult.data?.formattedData?.items
                         .filter((item: any) => item.sales?.qty > 0)
                         .sort((a: any, b: any) => (b.sales?.qty || 0) - (a.sales?.qty || 0))
                         .slice(0, 3)
@@ -627,7 +610,7 @@ const PDFExtractor: React.FC = () => {
                   <div className="bg-green-50 p-4 rounded-lg">
                     <h5 className="font-medium text-green-900 mb-2">💰 Highest Revenue</h5>
                     <div className="space-y-1 text-sm">
-                      {extractionResult.formattedData.items
+                      {extractionResult.data?.formattedData?.items
                         .filter((item: any) => item.sales?.value > 0)
                         .sort((a: any, b: any) => (b.sales?.value || 0) - (a.sales?.value || 0))
                         .slice(0, 3)
@@ -643,7 +626,7 @@ const PDFExtractor: React.FC = () => {
                   <div className="bg-purple-50 p-4 rounded-lg">
                     <h5 className="font-medium text-purple-900 mb-2">📦 Highest Stock Value</h5>
                     <div className="space-y-1 text-sm">
-                      {extractionResult.formattedData.items
+                      {extractionResult.data?.formattedData?.items
                         .filter((item: any) => item.closing?.value > 0)
                         .sort((a: any, b: any) => (b.closing?.value || 0) - (a.closing?.value || 0))
                         .slice(0, 3)
