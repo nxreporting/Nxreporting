@@ -1,4 +1,5 @@
-// Note: Using browser FormData API for serverless compatibility
+// Note: Using form-data for Node.js serverless compatibility
+import FormData from 'form-data';
 
 // Interface for OCR API response
 export interface NanonetsResponse {
@@ -46,8 +47,6 @@ export class NanonetsExtractionService {
 
     try {
       // Use the correct Nanonets extraction API endpoint
-      // Use node-fetch compatible FormData
-      const FormData = require('form-data');
       const formData = new FormData();
       
       // Append the file buffer directly (works in Node.js)
