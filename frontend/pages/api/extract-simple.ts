@@ -1,11 +1,13 @@
 import { NextApiRequest, NextApiResponse } from 'next'
 import formidable from 'formidable'
 import { promises as fs } from 'fs'
+import { ocrService } from '../../lib/services/multiProviderOCRService'
 
 // Disable body parser for file uploads
 export const config = {
   api: {
     bodyParser: false,
+    maxDuration: 45,
   },
 }
 
@@ -61,62 +63,44 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       })
     }
 
-    // Get output type
-    const outputType = (Array.isArray(fields.output_type) ? fields.output_type[0] : fields.output_type) || 'flat-json'
-
-    // Test Nanonets API call
-    const nanonetsApiKey = process.env.NANONETS_API_KEY
-    if (!nanonetsApiKey) {
-      return res.status(500).json({
-        success: false,
-        error: { message: 'Nanonets API key not configured' }
-      })
-    }
-
     // Read file buffer
     const fileBuffer = await fs.readFile(file.filepath)
 
-    // Make direct API call to Nanonets
-    const formData = new FormData()
-    formData.append('file', new Blob([fileBuffer], { type: 'application/pdf' }), file.originalFilename || 'document.pdf')
-    formData.append('output_type', outputType)
-
-    console.log('🔬 Starting Nanonets API call...')
+    console.log('🔬 Starting multi-provider OCR extraction...')
     
-    const nanonetsResponse = await fetch('https://app.nanonets.com/api/v2/OCR/Model/bd442c54-71de-4057-a0b8-91c4c8b5e5e1/LabelFile/', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Basic ${Buffer.from(nanonetsApiKey + ':').toString('base64')}`
-      },
-      body: formData
-    })
+    // Use the multi-provider OCR service
+    const extractionResult = await ocrService.extractFromBuffer(
+      fileBuffer,
+      file.originalFilename || 'document.pdf'
+    )
 
-    if (!nanonetsResponse.ok) {
-      const errorText = await nanonetsResponse.text()
-      console.error('❌ Nanonets API error:', nanonetsResponse.status, errorText)
+    if (!extractionResult.success) {
+      console.error('❌ OCR extraction failed:', extractionResult.error)
       return res.status(500).json({
         success: false,
         error: { 
-          message: 'Nanonets API call failed',
-          details: `Status: ${nanonetsResponse.status}, Response: ${errorText}`
+          message: 'OCR extraction failed',
+          details: extractionResult.error,
+          provider: extractionResult.provider
         }
       })
     }
 
-    const nanonetsResult = await nanonetsResponse.json()
-    console.log('✅ Nanonets API call successful')
+    console.log(`✅ OCR extraction successful using ${extractionResult.provider}`)
 
     // Return simplified response
     res.status(200).json({
       success: true,
       data: {
         message: 'PDF extracted successfully (simple version)',
-        nanonetsResult,
+        extractedText: extractionResult.extractedText,
+        provider: extractionResult.provider,
         metadata: {
           originalFilename: file.originalFilename,
           fileSize: file.size,
-          outputType: outputType,
-          processedAt: new Date().toISOString()
+          processedAt: new Date().toISOString(),
+          duration: extractionResult.metadata?.duration,
+          attempts: extractionResult.metadata?.attempts
         }
       }
     })

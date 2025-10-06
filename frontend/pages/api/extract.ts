@@ -1,7 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import formidable from 'formidable';
 import { promises as fs } from 'fs';
-import { nanonetsService } from '../../lib/services/nanonetsExtractionService';
+import { ocrService } from '../../lib/services/multiProviderOCRService';
 import { DataFormatter } from '../../lib/utils/dataFormatter';
 import { TextParser } from '../../lib/utils/textParser';
 import { uploadFile, validateFile, generateSafeFilename } from '../../lib/storage';
@@ -101,12 +101,12 @@ async function extractHandler(req: NextApiRequest, res: NextApiResponse) {
         console.warn('⚠️ Cloud storage upload error, proceeding with buffer processing:', uploadError);
       }
 
-      // Extract data using OCR service with timeout
-      console.log('🔬 Starting PDF extraction with timeout protection...');
-      console.log('🔧 Using updated OCR service (OCR.space + Nanonets fallback)');
+      // Extract data using multi-provider OCR service with timeout
+      console.log('🔬 Starting PDF extraction with multi-provider OCR...');
+      console.log('🔧 Providers: Nanonets → OCR.space → Fallback');
       
       const extractionResult = await withTimeout(
-        nanonetsService.extractFromBuffer(fileBuffer, file.originalFilename || 'document.pdf', outputType as any),
+        ocrService.extractFromBuffer(fileBuffer, file.originalFilename || 'document.pdf'),
         40000, // 40 second timeout (leave 5s buffer for response)
         'PDF extraction timed out'
       );
@@ -123,6 +123,8 @@ async function extractHandler(req: NextApiRequest, res: NextApiResponse) {
         console.log('✅ PDF extraction completed successfully');
         console.log(`📊 Provider used: ${extractionResult.provider || 'unknown'}`);
         console.log(`📜 Text extracted: ${extractionResult.extractedText?.length || 0} characters`);
+        console.log(`⏱️ Total duration: ${extractionResult.metadata?.duration || 0}ms`);
+        console.log(`🔄 Total attempts: ${extractionResult.metadata?.attempts || 0}`);
         
         // Format the data for better readability with timeout protection
         let formattedData = null;
@@ -233,14 +235,17 @@ async function extractHandler(req: NextApiRequest, res: NextApiResponse) {
         console.error('🔍 Provider attempted:', extractionResult.provider || 'unknown');
         console.error('🔍 Raw response:', extractionResult.rawResponse);
         
-        // Provide more helpful error message
+        // Provide more helpful error message based on provider
         let userFriendlyError = extractionResult.error || 'PDF extraction failed';
-        if (extractionResult.error?.includes('OCR.space')) {
+        
+        if (extractionResult.provider === 'none' || extractionResult.error?.includes('All OCR providers failed')) {
+          userFriendlyError = 'All PDF processing services are currently unavailable. Please try again later or contact support.';
+        } else if (extractionResult.error?.includes('OCR.space')) {
           userFriendlyError = 'OCR service temporarily unavailable. Please try again in a moment.';
         } else if (extractionResult.error?.includes('Nanonets')) {
-          userFriendlyError = 'PDF processing service configuration issue. Please contact support.';
-        } else if (extractionResult.error?.includes('All OCR providers failed')) {
-          userFriendlyError = 'All PDF processing services are currently unavailable. Please try again later.';
+          userFriendlyError = 'Primary OCR service unavailable. Trying alternative providers...';
+        } else if (extractionResult.error?.includes('too large')) {
+          userFriendlyError = 'File is too large. Please upload a PDF smaller than 50MB.';
         }
         
         sendError(res, userFriendlyError, 500, 'EXTRACTION_FAILED', {
