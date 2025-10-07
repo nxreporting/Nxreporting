@@ -1,8 +1,9 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import formidable from 'formidable';
 import { promises as fs } from 'fs';
-import { extractPDF } from '../../lib/services/pdfExtractor';
+import { ocrService } from '../../lib/services/multiProviderOCRService';
 import { DataFormatter } from '../../lib/utils/dataFormatter';
+import { TextParser } from '../../lib/utils/textParser';
 import { uploadFile, validateFile, generateSafeFilename } from '../../lib/storage';
 import { withTimeout, executeWithLimits, checkMemoryUsage } from '../../lib/timeout';
 import { 
@@ -100,12 +101,12 @@ async function extractHandler(req: NextApiRequest, res: NextApiResponse) {
         console.warn('⚠️ Cloud storage upload error, proceeding with buffer processing:', uploadError);
       }
 
-      // Extract data using enhanced PDF extraction service with timeout
-      console.log('🔬 Starting PDF extraction with enhanced multi-format parser...');
-      console.log('🔧 Provider: OCR.space with intelligent pharmaceutical format detection');
+      // Extract data using multi-provider OCR service with timeout
+      console.log('🔬 Starting PDF extraction with multi-provider OCR...');
+      console.log('🔧 Providers: Nanonets → OCR.space → Fallback');
       
       const extractionResult = await withTimeout(
-        extractPDF(fileBuffer, file.originalFilename || 'document.pdf', outputType as 'flat-json' | 'structured-json'),
+        ocrService.extractFromBuffer(fileBuffer, file.originalFilename || 'document.pdf'),
         40000, // 40 second timeout (leave 5s buffer for response)
         'PDF extraction timed out'
       );
@@ -113,12 +114,9 @@ async function extractHandler(req: NextApiRequest, res: NextApiResponse) {
       console.log('📊 Extraction result:', { 
         success: extractionResult.success, 
         provider: extractionResult.provider,
-        hasStructuredData: !!extractionResult.structuredData,
+        hasData: !!extractionResult.data,
         hasText: !!extractionResult.extractedText,
-        textLength: extractionResult.extractedText?.length || 0,
-        formatDetected: extractionResult.metadata?.formatDetected,
-        confidence: extractionResult.metadata?.confidence,
-        parsingStrategy: extractionResult.metadata?.parsingStrategy
+        textLength: extractionResult.extractedText?.length || 0
       });
 
       if (extractionResult.success) {
@@ -127,9 +125,6 @@ async function extractHandler(req: NextApiRequest, res: NextApiResponse) {
         console.log(`📜 Text extracted: ${extractionResult.extractedText?.length || 0} characters`);
         console.log(`⏱️ Total duration: ${extractionResult.metadata?.duration || 0}ms`);
         console.log(`🔄 Total attempts: ${extractionResult.metadata?.attempts || 0}`);
-        console.log(`🎯 Format detected: ${extractionResult.metadata?.formatDetected || 'unknown'}`);
-        console.log(`📈 Parsing confidence: ${extractionResult.metadata?.confidence || 0}`);
-        console.log(`🔧 Strategy used: ${extractionResult.metadata?.parsingStrategy || 'unknown'}`);
         
         // Format the data for better readability with timeout protection
         let formattedData = null;
@@ -142,34 +137,40 @@ async function extractHandler(req: NextApiRequest, res: NextApiResponse) {
           console.log('🔄 Starting data formatting...');
           checkMemoryUsage();
           
-          // Use structured data from the new extractPDF function if available
-          let dataToFormat = extractionResult.structuredData || null;
+          // Check if we have raw text that needs parsing first
+          let dataToFormat = extractionResult.data;
           
-          // If no structured data but we have extracted text, use the raw text
-          if (!dataToFormat && extractionResult.extractedText) {
-            console.log('🔄 No structured data available, using raw text for formatting...');
+          // If the data doesn't have structured fields but we have extracted text, parse it
+          const hasStructuredData = dataToFormat && (
+            Object.keys(dataToFormat).some(key => key.startsWith('item_')) ||
+            dataToFormat.company_name ||
+            dataToFormat.Company_Name
+          );
+          
+          if (!hasStructuredData && extractionResult.extractedText) {
+            console.log('🔄 Raw text detected, parsing into structured format...');
             console.log('📄 Text preview:', extractionResult.extractedText.substring(0, 200) + '...');
             
-            // Create minimal data structure for formatting
-            dataToFormat = {
-              company_name: 'Unknown Company',
-              report_title: 'Stock Report',
-              date_range: 'Unknown Period',
-              raw_text: extractionResult.extractedText
-            };
+            try {
+              const parsedData = TextParser.parseStockReportText(extractionResult.extractedText);
+              console.log('✅ Text parsing completed, found fields:', Object.keys(parsedData).length);
+              console.log('📊 Sample parsed fields:', Object.keys(parsedData).slice(0, 10));
+              dataToFormat = parsedData;
+            } catch (parseError) {
+              console.error('❌ Text parsing failed:', parseError);
+              // Continue with original data
+            }
           }
           
-          if (dataToFormat) {
-            formattedData = await withTimeout(
-              Promise.resolve(DataFormatter.formatStockReport(dataToFormat)),
-              5000,
-              'Data formatting timed out'
-            );
-            
-            summary = DataFormatter.generateSummary(formattedData);
-            brandAnalysis = DataFormatter.generateBrandWiseAnalysis(formattedData);
-            detailedBrandReport = DataFormatter.generateDetailedBrandReport(formattedData);
-          }
+          formattedData = await withTimeout(
+            Promise.resolve(DataFormatter.formatStockReport(dataToFormat)),
+            5000,
+            'Data formatting timed out'
+          );
+          
+          summary = DataFormatter.generateSummary(formattedData);
+          brandAnalysis = DataFormatter.generateBrandWiseAnalysis(formattedData);
+          detailedBrandReport = DataFormatter.generateDetailedBrandReport(formattedData);
           
           console.log('✅ Data formatting completed successfully');
         } catch (error: any) {
@@ -178,19 +179,19 @@ async function extractHandler(req: NextApiRequest, res: NextApiResponse) {
           
           // Create fallback formatted data
           try {
-            const rawData = extractionResult.structuredData || {};
+            const rawData = extractionResult.data;
             formattedData = {
-              company: { name: rawData.company_name || 'Unknown Company' },
+              company: { name: rawData.company_name || rawData.Company_Name || 'Unknown Company' },
               report: { 
-                title: rawData.report_title || 'Stock Report',
-                dateRange: rawData.date_range || 'Unknown Period',
+                title: rawData.report_title || rawData.Report_Type || 'Stock Report',
+                dateRange: rawData.date_range || rawData.report_date_range || 'Unknown Period',
                 generatedAt: new Date().toISOString()
               },
               items: [],
               summary: {
                 totalItems: 0,
-                totalSalesValue: 0,
-                totalClosingValue: 0
+                totalSalesValue: rawData.total_sales_value || 0,
+                totalClosingValue: rawData.total_closing_value || 0
               }
             };
             
@@ -204,7 +205,7 @@ async function extractHandler(req: NextApiRequest, res: NextApiResponse) {
         
         const responseData = {
           message: 'PDF extracted successfully',
-          data: extractionResult.structuredData || extractionResult.extractedText,
+          data: extractionResult.data,
           formattedData: formattedData,
           summary: summary,
           brandAnalysis: brandAnalysis,
@@ -219,10 +220,6 @@ async function extractHandler(req: NextApiRequest, res: NextApiResponse) {
             storageUrl: storageUrl,
             ocrProvider: extractionResult.provider || 'unknown',
             extractedTextLength: extractionResult.extractedText?.length || 0,
-            formatDetected: extractionResult.metadata?.formatDetected,
-            confidence: extractionResult.metadata?.confidence,
-            parsingStrategy: extractionResult.metadata?.parsingStrategy,
-            processingMethod: extractionResult.metadata?.processingMethod,
             formattingStatus: {
               formattedData: !!formattedData,
               summary: !!summary,
