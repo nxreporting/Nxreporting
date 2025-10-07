@@ -22,48 +22,30 @@ export interface CsvExtractionResult {
 export class PdfToCsvConverter {
   
   /**
-   * Main function to convert PDF to CSV using OCR.space API
+   * Convert extracted text to CSV format
    */
-  static async convertPdfToCsv(fileBuffer: Buffer, filename: string): Promise<CsvExtractionResult> {
+  static async convertTextToCsv(extractedText: string, filename: string): Promise<CsvExtractionResult> {
     const startTime = Date.now();
     
-    console.log(`📄 Starting PDF to CSV conversion: ${filename}`);
-    console.log(`📏 File size: ${(fileBuffer.length / 1024).toFixed(2)} KB`);
+    console.log(`📄 Starting text to CSV conversion: ${filename}`);
+    console.log(`📝 Text length: ${extractedText.length} characters`);
     
     try {
-      // Use OCR.space API to extract text from PDF
-      const ocrResult = await this.extractTextWithOcr(fileBuffer, filename);
-      
-      if (!ocrResult.success) {
-        return {
-          success: false,
-          error: ocrResult.error || 'Failed to extract text from PDF',
-          metadata: {
-            pages: 0,
-            tablesFound: 0,
-            processingTime: Date.now() - startTime
-          }
-        };
-      }
-      
-      const allText = ocrResult.text || '';
-      console.log(`📝 Extracted text length: ${allText.length} characters`);
-      
       // Extract company name and date from text
-      const companyName = this.extractCompanyName(allText);
-      const reportDate = this.extractReportDate(allText);
+      const companyName = this.extractCompanyName(extractedText);
+      const reportDate = this.extractReportDate(extractedText);
       
       console.log(`🏢 Company: ${companyName}`);
       console.log(`📅 Date: ${reportDate}`);
       
       // Convert text to table structure
-      const tableData = this.parseTextToTable(allText);
+      const tableData = this.parseTextToTable(extractedText);
       console.log(`📊 Found ${tableData.length} table rows`);
       
       if (tableData.length === 0) {
         return {
           success: false,
-          error: 'No table data found in PDF',
+          error: 'No table data found in text',
           metadata: {
             pages: 1,
             tablesFound: 0,
@@ -78,7 +60,7 @@ export class PdfToCsvConverter {
       const csvData = this.tableToCsv(tableData);
       
       const processingTime = Date.now() - startTime;
-      console.log(`✅ PDF to CSV conversion completed in ${processingTime}ms`);
+      console.log(`✅ Text to CSV conversion completed in ${processingTime}ms`);
       
       return {
         success: true,
@@ -94,11 +76,11 @@ export class PdfToCsvConverter {
       };
       
     } catch (error: any) {
-      console.error('❌ PDF to CSV conversion failed:', error);
+      console.error('❌ Text to CSV conversion failed:', error);
       
       return {
         success: false,
-        error: `PDF conversion failed: ${error.message}`,
+        error: `Text conversion failed: ${error.message}`,
         metadata: {
           pages: 0,
           tablesFound: 0,
@@ -107,75 +89,7 @@ export class PdfToCsvConverter {
       };
     }
   }
-  
-  /**
-   * Extract text from PDF using OCR.space API
-   */
-  private static async extractTextWithOcr(fileBuffer: Buffer, filename: string): Promise<{success: boolean, text?: string, error?: string}> {
-    try {
-      const apiKey = process.env.OCR_SPACE_API_KEY;
-      if (!apiKey) {
-        return { success: false, error: 'OCR_SPACE_API_KEY not configured' };
-      }
-      
-      const FormData = require('form-data');
-      const formData = new FormData();
-      
-      // Use base64 for smaller files, multipart for larger
-      const fileSizeMB = fileBuffer.length / (1024 * 1024);
-      
-      if (fileSizeMB < 5) {
-        const base64Data = fileBuffer.toString('base64');
-        formData.append('base64Image', `data:application/pdf;base64,${base64Data}`);
-      } else {
-        formData.append('file', fileBuffer, { filename });
-      }
-      
-      formData.append('apikey', apiKey);
-      formData.append('language', 'eng');
-      formData.append('isOverlayRequired', 'false');
-      formData.append('detectOrientation', 'true');
-      formData.append('scale', 'true');
-      formData.append('OCREngine', '2');
-      formData.append('filetype', 'PDF');
-      
-      const response = await fetch('https://api.ocr.space/parse/image', {
-        method: 'POST',
-        body: formData
-      });
-      
-      if (!response.ok) {
-        return { success: false, error: `OCR API error: ${response.status}` };
-      }
-      
-      const result = await response.json();
-      
-      if (result.IsErroredOnProcessing) {
-        const errorMsg = Array.isArray(result.ErrorMessage) 
-          ? result.ErrorMessage.join(', ') 
-          : result.ErrorMessage || 'OCR processing error';
-        return { success: false, error: errorMsg };
-      }
-      
-      let extractedText = '';
-      if (result.ParsedResults && Array.isArray(result.ParsedResults)) {
-        extractedText = result.ParsedResults
-          .map((r: any) => r.ParsedText || '')
-          .filter((text: string) => text.trim())
-          .join('\n')
-          .trim();
-      }
-      
-      if (!extractedText) {
-        return { success: false, error: 'No text extracted from PDF' };
-      }
-      
-      return { success: true, text: extractedText };
-      
-    } catch (error: any) {
-      return { success: false, error: `OCR extraction failed: ${error.message}` };
-    }
-  }
+
   
   /**
    * Extract company name from text

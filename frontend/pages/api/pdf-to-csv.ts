@@ -1,6 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import formidable from 'formidable';
 import { promises as fs } from 'fs';
+import { ocrService } from '../../lib/services/multiProviderOCRService';
 import { PdfToCsvConverter } from '../../lib/services/pdfToCsv';
 import { 
   sendSuccess, 
@@ -60,10 +61,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Read file buffer
     const fileBuffer = await fs.readFile(file.filepath);
     
-    // Convert PDF to CSV
-    console.log('🔄 Starting PDF to CSV conversion...');
-    const conversionResult = await PdfToCsvConverter.convertPdfToCsv(
-      fileBuffer, 
+    // First extract text using existing OCR service
+    console.log('🔄 Extracting text from PDF...');
+    const ocrResult = await ocrService.extractFromBuffer(fileBuffer, file.originalFilename || 'document.pdf');
+    
+    if (!ocrResult.success) {
+      sendError(res, ocrResult.error || 'Failed to extract text from PDF', 500, 'OCR_FAILED');
+      return;
+    }
+    
+    // Convert extracted text to CSV
+    console.log('🔄 Converting text to CSV format...');
+    const conversionResult = await PdfToCsvConverter.convertTextToCsv(
+      ocrResult.extractedText || '', 
       file.originalFilename || 'document.pdf'
     );
     
