@@ -2,17 +2,11 @@
  * PDF to CSV Converter
  * 
  * Extracts table data from pharmaceutical PDFs and converts to CSV format
- * No OCR needed - direct PDF text extraction with table structure detection
+ * Uses simple PDF text extraction without complex dependencies
  */
 
-import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf';
-
-// Configure PDF.js worker
-if (typeof window === 'undefined') {
-  // Server-side configuration
-  const pdfjsWorker = require('pdfjs-dist/legacy/build/pdf.worker.entry');
-  pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
-}
+// Simple PDF text extraction using pdf-parse (lightweight alternative)
+const pdf = require('pdf-parse');
 
 export interface CsvExtractionResult {
   success: boolean;
@@ -40,38 +34,18 @@ export class PdfToCsvConverter {
     console.log(`📏 File size: ${(fileBuffer.length / 1024).toFixed(2)} KB`);
     
     try {
-      // Load PDF document
-      const pdfDoc = await pdfjsLib.getDocument({
-        data: new Uint8Array(fileBuffer),
-        verbosity: 0 // Reduce console output
-      }).promise;
+      // Extract text from PDF using pdf-parse
+      const pdfData = await pdf(fileBuffer);
+      const allText = pdfData.text;
+      const numPages = pdfData.numpages;
       
-      console.log(`📖 PDF loaded successfully: ${pdfDoc.numPages} pages`);
-      
-      let allText = '';
-      let companyName = '';
-      let reportDate = '';
-      
-      // Extract text from all pages
-      for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
-        const page = await pdfDoc.getPage(pageNum);
-        const textContent = await page.getTextContent();
-        
-        // Extract text items with position information
-        const pageText = textContent.items
-          .map((item: any) => item.str)
-          .join(' ');
-        
-        allText += pageText + '\n';
-        
-        // Extract company name and date from first page
-        if (pageNum === 1) {
-          companyName = this.extractCompanyName(pageText);
-          reportDate = this.extractReportDate(pageText);
-        }
-      }
-      
+      console.log(`📖 PDF loaded successfully: ${numPages} pages`);
       console.log(`📝 Extracted text length: ${allText.length} characters`);
+      
+      // Extract company name and date from text
+      const companyName = this.extractCompanyName(allText);
+      const reportDate = this.extractReportDate(allText);
+      
       console.log(`🏢 Company: ${companyName}`);
       console.log(`📅 Date: ${reportDate}`);
       
@@ -84,7 +58,7 @@ export class PdfToCsvConverter {
           success: false,
           error: 'No table data found in PDF',
           metadata: {
-            pages: pdfDoc.numPages,
+            pages: numPages,
             tablesFound: 0,
             companyName,
             reportDate,
@@ -104,7 +78,7 @@ export class PdfToCsvConverter {
         csvData,
         tableData,
         metadata: {
-          pages: pdfDoc.numPages,
+          pages: numPages,
           tablesFound: tableData.length > 0 ? 1 : 0,
           companyName,
           reportDate,
