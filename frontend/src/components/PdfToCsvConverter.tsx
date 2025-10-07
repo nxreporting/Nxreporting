@@ -74,7 +74,28 @@ const PdfToCsvConverter: React.FC = () => {
         body: formData,
       });
 
-      const result: ConversionResponse = await response.json();
+      let result: ConversionResponse;
+      
+      if (!response.ok) {
+        // Handle non-200 responses
+        const errorText = await response.text();
+        console.error('❌ API Error Response:', errorText);
+        
+        try {
+          const errorJson = JSON.parse(errorText);
+          result = {
+            success: false,
+            error: errorJson.error || errorJson.message || `HTTP ${response.status}: ${response.statusText}`
+          };
+        } catch {
+          result = {
+            success: false,
+            error: `HTTP ${response.status}: ${response.statusText}`
+          };
+        }
+      } else {
+        result = await response.json();
+      }
 
       console.log('📬 Conversion response:', result);
       setConversionResult(result);
@@ -225,7 +246,12 @@ const PdfToCsvConverter: React.FC = () => {
                 <AlertCircle className="h-6 w-6 text-red-600 mr-2" />
                 <h3 className="text-lg font-medium text-red-900">Conversion Failed</h3>
               </div>
-              <p className="text-red-700">{conversionResult.error}</p>
+              <p className="text-red-700">
+                {typeof conversionResult.error === 'string' 
+                  ? conversionResult.error 
+                  : JSON.stringify(conversionResult.error)
+                }
+              </p>
             </div>
           )}
         </div>
