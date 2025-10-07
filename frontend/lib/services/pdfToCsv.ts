@@ -138,7 +138,11 @@ export class PdfToCsvConverter {
    * Parse extracted text into table structure
    */
   private static parseTextToTable(text: string): string[][] {
+    console.log('🔍 DEBUG: Raw extracted text:', text.substring(0, 500) + '...');
+    
     const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+    console.log('🔍 DEBUG: First 10 lines:', lines.slice(0, 10));
+    
     const tableData: string[][] = [];
     
     // Look for table headers
@@ -177,8 +181,11 @@ export class PdfToCsvConverter {
     
     // If no headers found, create generic ones
     if (!headerFound && tableData.length === 0) {
+      console.log('🔍 DEBUG: No headers found, trying pharmaceutical product detection...');
+      
       // Try to find pharmaceutical product lines
       const productLines = lines.filter(line => this.isPharmaceuticalProduct(line));
+      console.log(`🔍 DEBUG: Found ${productLines.length} pharmaceutical product lines`);
       
       if (productLines.length > 0) {
         // Create headers based on common pharmaceutical report structure
@@ -194,6 +201,30 @@ export class PdfToCsvConverter {
             tableData.push(rowData.slice(0, headers.length));
           }
         });
+      } else {
+        // Fallback: try to find any lines with multiple numbers (likely data rows)
+        console.log('🔍 DEBUG: No pharmaceutical products found, trying generic number detection...');
+        const numberLines = lines.filter(line => {
+          const numbers = line.match(/\d+/g);
+          return numbers && numbers.length >= 3; // At least 3 numbers
+        });
+        
+        console.log(`🔍 DEBUG: Found ${numberLines.length} lines with multiple numbers`);
+        
+        if (numberLines.length > 0) {
+          // Create generic headers
+          headers = ['Item', 'Value1', 'Value2', 'Value3', 'Value4', 'Value5', 'Value6', 'Value7', 'Value8'];
+          tableData.push(headers);
+          
+          numberLines.forEach(line => {
+            const parts = line.split(/\s+/);
+            const rowData = parts.slice(0, headers.length);
+            while (rowData.length < headers.length) {
+              rowData.push('');
+            }
+            tableData.push(rowData);
+          });
+        }
       }
     }
     
@@ -248,10 +279,18 @@ export class PdfToCsvConverter {
     const pharmaceuticalPatterns = [
       /\b(TAB|TABLET|TABLETS|CAP|CAPSULE|SYRUP|GEL|CREAM|INJ|INJECTION)\b/i,
       /\b\d+\s*(MG|ML|GM)\b/i,
-      /^[A-Z][A-Z\s\-0-9]+(TAB|CAP|SYRUP)/i
+      /^[A-Z][A-Z\s\-0-9]+(TAB|CAP|SYRUP)/i,
+      // More flexible patterns for different formats
+      /^[A-Z][A-Z\s\-0-9]{3,}.*\d+/i, // Any uppercase text with numbers
+      /^(MG|CNX|ACKOTIN|BECOCNX|BETAGOLD|CLOSINE|CNPROT|CNPX|ELM|ESCNX|RACIL|GABACNX|LISAM|LURACISE|MEVAMIN|OCDOX|PRERABE|TOPCNX|XANIRON)/i // Common pharmaceutical prefixes
     ];
     
-    return pharmaceuticalPatterns.some(pattern => pattern.test(line)) && /\d+/.test(line);
+    const hasNumbers = /\d+/.test(line);
+    const hasPharmaceuticalIndicators = pharmaceuticalPatterns.some(pattern => pattern.test(line));
+    
+    console.log(`🔍 DEBUG: Checking line "${line.substring(0, 50)}..." - hasNumbers: ${hasNumbers}, hasPharmaceuticalIndicators: ${hasPharmaceuticalIndicators}`);
+    
+    return hasNumbers && (hasPharmaceuticalIndicators || line.length > 15);
   }
   
   /**
