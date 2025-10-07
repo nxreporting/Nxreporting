@@ -2,11 +2,8 @@
  * PDF to CSV Converter
  * 
  * Extracts table data from pharmaceutical PDFs and converts to CSV format
- * Uses simple PDF text extraction without complex dependencies
+ * Uses OCR.space API for reliable text extraction, then converts to CSV
  */
-
-// Simple PDF text extraction using pdf-parse (lightweight alternative)
-const pdf = require('pdf-parse');
 
 export interface CsvExtractionResult {
   success: boolean;
@@ -25,7 +22,7 @@ export interface CsvExtractionResult {
 export class PdfToCsvConverter {
   
   /**
-   * Main function to convert PDF to CSV
+   * Main function to convert PDF to CSV using OCR.space API
    */
   static async convertPdfToCsv(fileBuffer: Buffer, filename: string): Promise<CsvExtractionResult> {
     const startTime = Date.now();
@@ -34,12 +31,22 @@ export class PdfToCsvConverter {
     console.log(`📏 File size: ${(fileBuffer.length / 1024).toFixed(2)} KB`);
     
     try {
-      // Extract text from PDF using pdf-parse
-      const pdfData = await pdf(fileBuffer);
-      const allText = pdfData.text;
-      const numPages = pdfData.numpages;
+      // Use OCR.space API to extract text from PDF
+      const ocrResult = await this.extractTextWithOcr(fileBuffer, filename);
       
-      console.log(`📖 PDF loaded successfully: ${numPages} pages`);
+      if (!ocrResult.success) {
+        return {
+          success: false,
+          error: ocrResult.error || 'Failed to extract text from PDF',
+          metadata: {
+            pages: 0,
+            tablesFound: 0,
+            processingTime: Date.now() - startTime
+          }
+        };
+      }
+      
+      const allText = ocrResult.text || '';
       console.log(`📝 Extracted text length: ${allText.length} characters`);
       
       // Extract company name and date from text
@@ -58,7 +65,7 @@ export class PdfToCsvConverter {
           success: false,
           error: 'No table data found in PDF',
           metadata: {
-            pages: numPages,
+            pages: 1,
             tablesFound: 0,
             companyName,
             reportDate,
@@ -78,7 +85,7 @@ export class PdfToCsvConverter {
         csvData,
         tableData,
         metadata: {
-          pages: numPages,
+          pages: 1,
           tablesFound: tableData.length > 0 ? 1 : 0,
           companyName,
           reportDate,
@@ -98,6 +105,75 @@ export class PdfToCsvConverter {
           processingTime: Date.now() - startTime
         }
       };
+    }
+  }
+  
+  /**
+   * Extract text from PDF using OCR.space API
+   */
+  private static async extractTextWithOcr(fileBuffer: Buffer, filename: string): Promise<{success: boolean, text?: string, error?: string}> {
+    try {
+      const apiKey = process.env.OCR_SPACE_API_KEY;
+      if (!apiKey) {
+        return { success: false, error: 'OCR_SPACE_API_KEY not configured' };
+      }
+      
+      const FormData = require('form-data');
+      const formData = new FormData();
+      
+      // Use base64 for smaller files, multipart for larger
+      const fileSizeMB = fileBuffer.length / (1024 * 1024);
+      
+      if (fileSizeMB < 5) {
+        const base64Data = fileBuffer.toString('base64');
+        formData.append('base64Image', `data:application/pdf;base64,${base64Data}`);
+      } else {
+        formData.append('file', fileBuffer, { filename });
+      }
+      
+      formData.append('apikey', apiKey);
+      formData.append('language', 'eng');
+      formData.append('isOverlayRequired', 'false');
+      formData.append('detectOrientation', 'true');
+      formData.append('scale', 'true');
+      formData.append('OCREngine', '2');
+      formData.append('filetype', 'PDF');
+      
+      const response = await fetch('https://api.ocr.space/parse/image', {
+        method: 'POST',
+        body: formData
+      });
+      
+      if (!response.ok) {
+        return { success: false, error: `OCR API error: ${response.status}` };
+      }
+      
+      const result = await response.json();
+      
+      if (result.IsErroredOnProcessing) {
+        const errorMsg = Array.isArray(result.ErrorMessage) 
+          ? result.ErrorMessage.join(', ') 
+          : result.ErrorMessage || 'OCR processing error';
+        return { success: false, error: errorMsg };
+      }
+      
+      let extractedText = '';
+      if (result.ParsedResults && Array.isArray(result.ParsedResults)) {
+        extractedText = result.ParsedResults
+          .map((r: any) => r.ParsedText || '')
+          .filter((text: string) => text.trim())
+          .join('\n')
+          .trim();
+      }
+      
+      if (!extractedText) {
+        return { success: false, error: 'No text extracted from PDF' };
+      }
+      
+      return { success: true, text: extractedText };
+      
+    } catch (error: any) {
+      return { success: false, error: `OCR extraction failed: ${error.message}` };
     }
   }
   
