@@ -103,7 +103,7 @@ async function extractHandler(req: NextApiRequest, res: NextApiResponse) {
 
       // Extract data using multi-provider OCR service with timeout
       console.log('🔬 Starting PDF extraction with multi-provider OCR...');
-      console.log('🔧 Providers: Nanonets → OCR.space → Fallback');
+      console.log('🔧 Providers: dots.ocr → Nanonets → OCR.space → Fallback');
       
       const extractionResult = await withTimeout(
         ocrService.extractFromBuffer(fileBuffer, file.originalFilename || 'document.pdf'),

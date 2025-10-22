@@ -31,7 +31,7 @@ export interface OCRResponse {
 interface OCRProvider {
   name: string;
   extract: (fileBuffer: Buffer, filename: string) => Promise<OCRResponse>;
-  isConfigured: () => boolean;
+  isConfigured: () => boolean | Promise<boolean>;
 }
 
 // ============================================================================
@@ -88,18 +88,37 @@ import { createDotsOCRService } from './dotsOCRService';
 class DotsOCRProvider implements OCRProvider {
   name = 'dots.ocr';
   private dotsOCRService: any;
+  private configuredCache: boolean | null = null;
+  private lastCheck: number = 0;
+  private checkInterval = 30000; // Check every 30 seconds
 
   constructor() {
-    this.dotsOCRService = createDotsOCRService();
+    try {
+      this.dotsOCRService = createDotsOCRService();
+    } catch (error) {
+      console.warn('⚠️ dots.ocr service creation failed:', error);
+      this.dotsOCRService = null;
+    }
   }
 
-  async isConfigured(): Promise<boolean> {
-    try {
-      const status = await this.dotsOCRService.getStatus();
-      return status.available;
-    } catch (error) {
+  isConfigured(): boolean {
+    // Return cached result if recent
+    const now = Date.now();
+    if (this.configuredCache !== null && (now - this.lastCheck) < this.checkInterval) {
+      return this.configuredCache;
+    }
+
+    // Quick synchronous check - assume not configured if service creation failed
+    if (!this.dotsOCRService) {
+      this.configuredCache = false;
+      this.lastCheck = now;
       return false;
     }
+
+    // Assume configured for now, will be verified during extraction
+    this.configuredCache = true;
+    this.lastCheck = now;
+    return true;
   }
 
   async extract(fileBuffer: Buffer, filename: string): Promise<OCRResponse> {
@@ -108,9 +127,18 @@ class DotsOCRProvider implements OCRProvider {
 
     try {
       // Check if service is available
-      if (!(await this.isConfigured())) {
+      if (!this.dotsOCRService) {
+        throw new Error('dots.ocr service not initialized');
+      }
+
+      // Check server availability
+      const status = await this.dotsOCRService.getStatus();
+      if (!status.available) {
+        this.configuredCache = false; // Update cache
         throw new Error('dots.ocr server not available. Please start vLLM server.');
       }
+
+      this.configuredCache = true; // Update cache
 
       // Use dots.ocr with layout and text extraction
       const result = await this.dotsOCRService.extractFromBuffer(fileBuffer, filename, {
@@ -143,6 +171,12 @@ class DotsOCRProvider implements OCRProvider {
     } catch (error: any) {
       const duration = Date.now() - startTime;
       console.error(`❌ dots.ocr: Document parsing failed after ${duration}ms - ${error.message}`);
+      
+      // Update cache if it's a server availability issue
+      if (error.message.includes('server not available') || error.message.includes('not initialized')) {
+        this.configuredCache = false;
+      }
+      
       throw error;
     }
   }
@@ -414,7 +448,8 @@ export class MultiProviderOCRService {
     // Try each provider in order
     for (const provider of this.providers) {
       // Skip providers that aren't configured
-      if (!provider.isConfigured()) {
+      const isConfigured = await Promise.resolve(provider.isConfigured());
+      if (!isConfigured) {
         console.log(`⏭️ ${provider.name}: Skipping (not configured)`);
         continue;
       }
@@ -551,12 +586,14 @@ export class MultiProviderOCRService {
   /**
    * Get service status
    */
-  getStatus() {
-    const providers = this.providers.map(provider => ({
-      name: provider.name,
-      configured: provider.isConfigured(),
-      available: provider.isConfigured()
-    }));
+  async getStatus() {
+    const providers = await Promise.all(
+      this.providers.map(async provider => ({
+        name: provider.name,
+        configured: await Promise.resolve(provider.isConfigured()),
+        available: await Promise.resolve(provider.isConfigured())
+      }))
+    );
 
     return {
       ready: providers.some(p => p.configured),
