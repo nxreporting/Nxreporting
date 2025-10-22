@@ -3,12 +3,11 @@
  * Handles PDF text extraction using multiple OCR providers with fallback strategy
  * 
  * Providers (in order of preference):
- * 1. Nanonets API (if configured)
- * 2. OCR.space API (primary/reliable)
- * 3. Fallback (returns file info only)
+ * 1. dots.ocr (SOTA accuracy)
+ * 2. Nanonets API (pharmaceutical focus)
+ * 3. OCR.space API (reliable backup)
+ * 4. Fallback (file info only)
  */
-
-import FormData from 'form-data';
 
 // ============================================================================
 // INTERFACES
@@ -25,6 +24,12 @@ export interface OCRResponse {
     attempts?: number;
     duration?: number;
     fileSize?: number;
+    confidence?: number;
+    pages?: number;
+    tables?: number;
+    fields?: number;
+    elements?: number;
+    layoutElements?: number;
   };
 }
 
@@ -47,13 +52,13 @@ async function retryWithBackoff<T>(
   baseDelay: number = 1000
 ): Promise<T> {
   let lastError: Error | null = null;
-  
+
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       return await fn();
     } catch (error) {
       lastError = error as Error;
-      
+
       if (attempt < maxRetries - 1) {
         const delay = baseDelay * Math.pow(2, attempt);
         console.log(`⏳ Retry attempt ${attempt + 1}/${maxRetries} after ${delay}ms...`);
@@ -61,7 +66,7 @@ async function retryWithBackoff<T>(
       }
     }
   }
-  
+
   throw lastError || new Error('Max retries exceeded');
 }
 
@@ -171,12 +176,12 @@ class DotsOCRProvider implements OCRProvider {
     } catch (error: any) {
       const duration = Date.now() - startTime;
       console.error(`❌ dots.ocr: Document parsing failed after ${duration}ms - ${error.message}`);
-      
+
       // Update cache if it's a server availability issue
       if (error.message.includes('server not available') || error.message.includes('not initialized')) {
         this.configuredCache = false;
       }
-      
+
       throw error;
     }
   }
@@ -263,27 +268,17 @@ class OCRSpaceProvider implements OCRProvider {
     const startTime = Date.now();
 
     try {
-      const formData = new FormData();
       const fileSizeMB = fileBuffer.length / (1024 * 1024);
 
-      // For large files (>5MB), use direct file upload
-      // For smaller files, use base64 encoding (more reliable for PDFs)
-      if (fileSizeMB > 5) {
-        console.log(`📦 OCR.space: Large file (${fileSizeMB.toFixed(2)}MB), using multipart upload`);
-        
-        formData.append('file', fileBuffer, {
-          filename: filename,
-          contentType: 'application/pdf'
-        });
-      } else {
-        console.log(`📦 OCR.space: Small file (${fileSizeMB.toFixed(2)}MB), using base64 encoding`);
-        
-        const base64Data = fileBuffer.toString('base64');
-        const base64String = `data:application/pdf;base64,${base64Data}`;
-        formData.append('base64Image', base64String);
-      }
+      // Always use base64 encoding for better compatibility
+      console.log(`📦 OCR.space: File (${fileSizeMB.toFixed(2)}MB), using base64 encoding`);
+      
+      const base64Data = fileBuffer.toString('base64');
+      const base64String = `data:application/pdf;base64,${base64Data}`;
 
-      // OCR.space configuration
+      // Prepare form data as URLSearchParams for better compatibility
+      const formData = new URLSearchParams();
+      formData.append('base64Image', base64String);
       formData.append('apikey', this.apiKey);
       formData.append('language', 'eng');
       formData.append('isOverlayRequired', 'false');
@@ -296,6 +291,9 @@ class OCRSpaceProvider implements OCRProvider {
 
       const response = await fetch(this.apiUrl, {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
         body: formData
       });
 
@@ -309,8 +307,8 @@ class OCRSpaceProvider implements OCRProvider {
 
       // Check for processing errors
       if (responseData.IsErroredOnProcessing) {
-        const errorMsg = Array.isArray(responseData.ErrorMessage) 
-          ? responseData.ErrorMessage.join(', ') 
+        const errorMsg = Array.isArray(responseData.ErrorMessage)
+          ? responseData.ErrorMessage.join(', ')
           : responseData.ErrorMessage || 'Unknown error';
         throw new Error(`OCR.space processing error: ${errorMsg}`);
       }
@@ -376,9 +374,9 @@ class FallbackProvider implements OCRProvider {
 
   async extract(fileBuffer: Buffer, filename: string): Promise<OCRResponse> {
     console.log('🔧 Fallback: Returning file info (no OCR)...');
-    
+
     const fileSizeMB = (fileBuffer.length / (1024 * 1024)).toFixed(2);
-    
+
     const fallbackData = {
       message: 'OCR extraction not available',
       filename: filename,
@@ -456,11 +454,11 @@ export class MultiProviderOCRService {
 
       try {
         console.log(`🔄 ${provider.name}: Attempting extraction...`);
-        
+
         // Use retry logic for non-fallback providers
         const shouldRetry = provider.name !== 'Fallback';
         const maxRetries = shouldRetry ? 3 : 1;
-        
+
         const result = await retryWithBackoff(
           () => provider.extract(fileBuffer, filename),
           maxRetries,
@@ -471,11 +469,11 @@ export class MultiProviderOCRService {
 
         if (result.success) {
           const overallDuration = Date.now() - overallStartTime;
-          
+
           console.log(`✅ ${provider.name}: Extraction successful!`);
           console.log(`📊 Total time: ${overallDuration}ms, Total attempts: ${totalAttempts}`);
           console.log(`📜 Extracted text length: ${result.extractedText?.length || 0} characters`);
-          
+
           // Add overall metadata
           result.metadata = {
             ...result.metadata,
@@ -492,10 +490,10 @@ export class MultiProviderOCRService {
       } catch (error: any) {
         totalAttempts += 3; // Count failed retries
         console.error(`❌ ${provider.name}: All attempts failed - ${error.message}`);
-        
+
         // Track analytics for failure
         this.trackAnalytics(provider.name, false, Date.now() - overallStartTime, fileBuffer.length);
-        
+
         // Continue to next provider
         continue;
       }
@@ -525,7 +523,7 @@ export class MultiProviderOCRService {
   ): Promise<OCRResponse> {
     try {
       const fs = await import('fs');
-      
+
       if (!fs.existsSync(filePath)) {
         return {
           success: false,
@@ -541,7 +539,7 @@ export class MultiProviderOCRService {
 
     } catch (error: any) {
       console.error('❌ MultiProviderOCR: File extraction failed:', error.message);
-      
+
       return {
         success: false,
         error: `File extraction failed: ${error.message}`,
@@ -556,9 +554,9 @@ export class MultiProviderOCRService {
   async extractFromUrl(fileUrl: string): Promise<OCRResponse> {
     try {
       console.log('📥 MultiProviderOCR: Downloading file from URL...');
-      
+
       const fileResponse = await fetch(fileUrl);
-      
+
       if (!fileResponse.ok) {
         return {
           success: false,
@@ -574,7 +572,7 @@ export class MultiProviderOCRService {
 
     } catch (error: any) {
       console.error('❌ MultiProviderOCR: URL extraction failed:', error.message);
-      
+
       return {
         success: false,
         error: `URL extraction failed: ${error.message}`,

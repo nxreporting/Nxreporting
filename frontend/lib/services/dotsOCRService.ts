@@ -399,6 +399,8 @@ export class DotsOCRService {
 
       // Extract headers
       const headerRow = rows[0];
+      if (!headerRow) return items;
+      
       const headers = (headerRow.match(/<t[hd][^>]*>(.*?)<\/t[hd]>/gi) || [])
         .map(cell => cell.replace(/<[^>]*>/g, '').trim().toLowerCase());
 
