@@ -79,6 +79,75 @@ function sanitizeForLog(text: string, maxLength: number = 200): string {
 
 import { createNanonetsService } from './nanonetsService';
 
+// ============================================================================
+// DOTS OCR PROVIDER
+// ============================================================================
+
+import { createDotsOCRService } from './dotsOCRService';
+
+class DotsOCRProvider implements OCRProvider {
+  name = 'dots.ocr';
+  private dotsOCRService: any;
+
+  constructor() {
+    this.dotsOCRService = createDotsOCRService();
+  }
+
+  async isConfigured(): Promise<boolean> {
+    try {
+      const status = await this.dotsOCRService.getStatus();
+      return status.available;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  async extract(fileBuffer: Buffer, filename: string): Promise<OCRResponse> {
+    console.log('🔧 dots.ocr: Starting document parsing...');
+    const startTime = Date.now();
+
+    try {
+      // Check if service is available
+      if (!(await this.isConfigured())) {
+        throw new Error('dots.ocr server not available. Please start vLLM server.');
+      }
+
+      // Use dots.ocr with layout and text extraction
+      const result = await this.dotsOCRService.extractFromBuffer(fileBuffer, filename, {
+        mode: 'layout_all' // Get both layout and text
+      });
+
+      if (result.success) {
+        console.log(`✅ dots.ocr: Document parsing successful`);
+        console.log(`📊 Data: ${result.extractedText?.length || 0} chars, ${result.layoutElements?.length || 0} elements`);
+
+        return {
+          success: true,
+          data: result.structuredData || result.data,
+          extractedText: result.extractedText,
+          rawResponse: result.data,
+          provider: this.name,
+          metadata: {
+            duration: result.metadata?.duration || (Date.now() - startTime),
+            fileSize: fileBuffer.length,
+            confidence: result.metadata?.confidence,
+            pages: result.metadata?.pages,
+            elements: result.metadata?.elementsCount || 0,
+            layoutElements: result.layoutElements?.length || 0
+          }
+        };
+      } else {
+        throw new Error(result.error || 'dots.ocr extraction failed');
+      }
+
+    } catch (error: any) {
+      const duration = Date.now() - startTime;
+      console.error(`❌ dots.ocr: Document parsing failed after ${duration}ms - ${error.message}`);
+      throw error;
+    }
+  }
+}
+
 class NanonetsProvider implements OCRProvider {
   name = 'Nanonets';
   private nanonetsService: any;
@@ -306,7 +375,9 @@ export class MultiProviderOCRService {
 
   constructor() {
     // Initialize providers in order of preference
+    // dots.ocr first for best accuracy, then Nanonets, then OCR.space
     this.providers = [
+      new DotsOCRProvider(),
       new NanonetsProvider(),
       new OCRSpaceProvider(),
       new FallbackProvider()
