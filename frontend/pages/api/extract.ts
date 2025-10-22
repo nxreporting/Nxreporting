@@ -1,7 +1,8 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import formidable from 'formidable';
 import { promises as fs } from 'fs';
-import { ocrService } from '../../lib/services/multiProviderOCRService';
+// Temporarily use simple OCR service to debug 500 error
+import { simpleOCRService as ocrService } from '../../lib/services/simpleOCRService';
 import { DataFormatter } from '../../lib/utils/dataFormatter';
 import { TextParser } from '../../lib/utils/textParser';
 import { uploadFile, validateFile, generateSafeFilename } from '../../lib/storage';
@@ -103,7 +104,7 @@ async function extractHandler(req: NextApiRequest, res: NextApiResponse) {
 
       // Extract data using multi-provider OCR service with timeout
       console.log('🔬 Starting PDF extraction with multi-provider OCR...');
-      console.log('🔧 Providers: dots.ocr → Nanonets → OCR.space → Fallback');
+      console.log('🔧 Providers: Nanonets → OCR.space → Fallback (Simple Mode)');
       
       const extractionResult = await withTimeout(
         ocrService.extractFromBuffer(fileBuffer, file.originalFilename || 'document.pdf'),

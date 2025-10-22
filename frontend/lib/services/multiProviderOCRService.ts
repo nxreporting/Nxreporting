@@ -272,7 +272,7 @@ class OCRSpaceProvider implements OCRProvider {
 
       // Always use base64 encoding for better compatibility
       console.log(`📦 OCR.space: File (${fileSizeMB.toFixed(2)}MB), using base64 encoding`);
-      
+
       const base64Data = fileBuffer.toString('base64');
       const base64String = `data:application/pdf;base64,${base64Data}`;
 
