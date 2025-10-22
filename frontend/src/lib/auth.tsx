@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import api from './api';
 import { User, AuthResponse } from '@/types';
 
@@ -17,37 +17,52 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    setHydrated(true);
-  }, []);
-
-  useEffect(() => {
-    if (!hydrated) return;
+    let isMounted = true;
     
     const initAuth = async () => {
-      const token = localStorage.getItem('token');
-      if (token) {
-        try {
-          const response = await api.get('/auth/me');
-          if (response.data.success) {
-            setUser(response.data.data.user);
-          } else {
-            localStorage.removeItem('token');
+      // Prevent running on server-side
+      if (typeof window === 'undefined') {
+        if (isMounted) setLoading(false);
+        return;
+      }
+      
+      try {
+        const token = localStorage.getItem('token');
+        if (token && isMounted) {
+          try {
+            const response = await api.get('/auth/me');
+            if (isMounted && response.data.success) {
+              setUser(response.data.data.user);
+            } else if (isMounted) {
+              localStorage.removeItem('token');
+            }
+          } catch (error) {
+            console.error('Auth initialization error:', error);
+            if (isMounted) {
+              localStorage.removeItem('token');
+            }
           }
-        } catch (error) {
-          console.error('Auth initialization error:', error);
-          localStorage.removeItem('token');
+        }
+      } catch (error) {
+        console.error('Auth initialization failed:', error);
+      } finally {
+        if (isMounted) {
+          setLoading(false);
         }
       }
-      setLoading(false);
     };
 
     initAuth();
-  }, [hydrated]);
 
-  const login = async (email: string, password: string): Promise<AuthResponse> => {
+    // Cleanup function to prevent state updates on unmounted component
+    return () => {
+      isMounted = false;
+    };
+  }, []); // Empty dependency array - only run once
+
+  const login = useCallback(async (email: string, password: string): Promise<AuthResponse> => {
     try {
       // Use simple login for testing (no Supabase required)
       const response = await api.post('/auth/login-simple', { email, password });
@@ -65,9 +80,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         error: { message: error.response?.data?.error?.message || 'Login failed' }
       };
     }
-  };
+  }, []);
 
-  const register = async (email: string, password: string, name: string): Promise<AuthResponse> => {
+  const register = useCallback(async (email: string, password: string, name: string): Promise<AuthResponse> => {
     try {
       const response = await api.post('/auth/register', { email, password, name });
       if (response.data.success) {
@@ -84,14 +99,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         error: { message: error.response?.data?.error?.message || 'Registration failed' }
       };
     }
-  };
+  }, []);
 
-  const logout = () => {
+  const logout = useCallback(() => {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('token');
     }
     setUser(null);
-  };
+  }, []);
 
   return (
     <AuthContext.Provider value={{ user, login, register, logout, loading }}>

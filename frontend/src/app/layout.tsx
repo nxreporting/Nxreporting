@@ -5,6 +5,7 @@ import { AuthProvider } from '@/lib/auth'
 import { Navbar } from '@/components/layout/Navbar'
 import { Toaster } from '@/components/ui/Toaster'
 import { NoSSR } from '@/components/NoSSR'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -22,24 +23,26 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className} suppressHydrationWarning={true}>
-        <NoSSR fallback={
-          <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-              <p className="mt-2 text-gray-600">Loading...</p>
+        <ErrorBoundary>
+          <NoSSR fallback={
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                <p className="mt-2 text-gray-600">Loading...</p>
+              </div>
             </div>
-          </div>
-        }>
-          <AuthProvider>
-            <div className="min-h-screen bg-gray-50">
-              <Navbar />
-              <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                {children}
-              </main>
-            </div>
-            <Toaster />
-          </AuthProvider>
-        </NoSSR>
+          }>
+            <AuthProvider>
+              <div className="min-h-screen bg-gray-50">
+                <Navbar />
+                <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                  {children}
+                </main>
+              </div>
+              <Toaster />
+            </AuthProvider>
+          </NoSSR>
+        </ErrorBoundary>
       </body>
     </html>
   )
