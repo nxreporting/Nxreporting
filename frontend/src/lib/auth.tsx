@@ -49,7 +49,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (email: string, password: string): Promise<AuthResponse> => {
     try {
-      const response = await api.post('/auth/login', { email, password });
+      // Use simple login for testing (no Supabase required)
+      const response = await api.post('/auth/login-simple', { email, password });
       if (response.data.success) {
         const { user, token } = response.data.data;
         if (typeof window !== 'undefined') {

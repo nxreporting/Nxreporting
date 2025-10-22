@@ -77,19 +77,18 @@ function sanitizeForLog(text: string, maxLength: number = 200): string {
 // NANONETS PROVIDER
 // ============================================================================
 
+import { createNanonetsService } from './nanonetsService';
+
 class NanonetsProvider implements OCRProvider {
   name = 'Nanonets';
-  private apiKey: string;
-  private modelId: string;
-  private baseUrl = 'https://app.nanonets.com/api/v2/OCR/Model';
+  private nanonetsService: any;
 
   constructor() {
-    this.apiKey = process.env.NANONETS_API_KEY || '';
-    this.modelId = process.env.NANONETS_MODEL_ID || 'bd442c54-71de-4057-a0b8-91c4c8b5e5e1';
+    this.nanonetsService = createNanonetsService();
   }
 
   isConfigured(): boolean {
-    return !!this.apiKey && this.apiKey !== 'your-api-key-here';
+    return this.nanonetsService.isConfigured();
   }
 
   async extract(fileBuffer: Buffer, filename: string): Promise<OCRResponse> {
@@ -97,90 +96,43 @@ class NanonetsProvider implements OCRProvider {
       throw new Error('Nanonets API key not configured');
     }
 
-    console.log('🔧 Nanonets: Starting extraction...');
+    console.log('🔧 Nanonets: Starting enhanced extraction...');
     const startTime = Date.now();
 
     try {
-      const formData = new FormData();
-      
-      // Nanonets expects file as multipart/form-data
-      formData.append('file', fileBuffer, {
-        filename: filename,
-        contentType: 'application/pdf'
+      // Use enhanced Nanonets service with table and field extraction
+      const result = await this.nanonetsService.extractFromBuffer(fileBuffer, filename, {
+        extractTables: true,
+        extractFields: true
       });
 
-      const url = `${this.baseUrl}/${this.modelId}/LabelFile/`;
-      
-      // Nanonets uses Basic authentication
-      const authString = Buffer.from(`${this.apiKey}:`).toString('base64');
+      if (result.success) {
+        console.log(`✅ Nanonets: Enhanced extraction successful`);
+        console.log(`📊 Data: ${result.extractedText?.length || 0} chars, ${result.tables?.length || 0} tables, ${Object.keys(result.fields || {}).length} fields`);
 
-      console.log(`📡 Nanonets: Calling API (model: ${this.modelId})...`);
-
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Basic ${authString}`,
-          ...formData.getHeaders()
-        },
-        body: formData
-      });
-
-      const duration = Date.now() - startTime;
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`❌ Nanonets: HTTP ${response.status} - ${sanitizeForLog(errorText)}`);
-        throw new Error(`Nanonets API error: ${response.status}`);
+        return {
+          success: true,
+          data: result.structuredData || result.data,
+          extractedText: result.extractedText,
+          rawResponse: result.data,
+          provider: this.name,
+          metadata: {
+            duration: result.metadata?.duration || (Date.now() - startTime),
+            fileSize: fileBuffer.length,
+            confidence: result.metadata?.confidence,
+            pages: result.metadata?.pages,
+            tables: result.tables?.length || 0,
+            fields: Object.keys(result.fields || {}).length
+          }
+        };
+      } else {
+        throw new Error(result.error || 'Nanonets extraction failed');
       }
-
-      const responseData = await response.json();
-      const extractedText = this.extractTextFromResponse(responseData);
-
-      console.log(`✅ Nanonets: Success (${duration}ms, ${extractedText.length} chars)`);
-
-      return {
-        success: true,
-        data: responseData,
-        extractedText: extractedText,
-        rawResponse: responseData,
-        provider: this.name,
-        metadata: {
-          duration,
-          fileSize: fileBuffer.length
-        }
-      };
 
     } catch (error: any) {
       const duration = Date.now() - startTime;
-      console.error(`❌ Nanonets: Failed after ${duration}ms - ${error.message}`);
+      console.error(`❌ Nanonets: Enhanced extraction failed after ${duration}ms - ${error.message}`);
       throw error;
-    }
-  }
-
-  private extractTextFromResponse(responseData: any): string {
-    try {
-      let extractedText = '';
-
-      // Nanonets OCR response structure
-      if (responseData.result && Array.isArray(responseData.result)) {
-        for (const page of responseData.result) {
-          if (page.prediction && Array.isArray(page.prediction)) {
-            const pageText = page.prediction
-              .map((pred: any) => pred.ocr_text || pred.text || pred.label || '')
-              .filter((text: string) => text.trim())
-              .join(' ');
-            
-            if (pageText) {
-              extractedText += pageText + '\n';
-            }
-          }
-        }
-      }
-
-      return extractedText.trim() || 'No text extracted';
-    } catch (error) {
-      console.warn('⚠️ Nanonets: Error extracting text from response');
-      return JSON.stringify(responseData, null, 2);
     }
   }
 }

@@ -206,7 +206,9 @@ export class PdfToCsvConverter {
         console.log('🔍 DEBUG: No pharmaceutical products found, trying generic number detection...');
         const numberLines = lines.filter(line => {
           const numbers = line.match(/\d+/g);
-          return numbers && numbers.length >= 3; // At least 3 numbers
+          const hasMultipleNumbers = numbers && numbers.length >= 2; // Reduced from 3 to 2
+          console.log(`🔍 DEBUG: Line "${line.substring(0, 30)}..." has ${numbers?.length || 0} numbers`);
+          return hasMultipleNumbers;
         });
         
         console.log(`🔍 DEBUG: Found ${numberLines.length} lines with multiple numbers`);
@@ -223,6 +225,18 @@ export class PdfToCsvConverter {
               rowData.push('');
             }
             tableData.push(rowData);
+            console.log(`🔍 DEBUG: Added row: ${rowData.slice(0, 3).join(', ')}...`);
+          });
+        } else {
+          // Last resort: just split all lines and create a basic CSV
+          console.log('🔍 DEBUG: No number lines found, creating basic CSV from all lines...');
+          headers = ['Text'];
+          tableData.push(headers);
+          
+          lines.slice(0, 20).forEach(line => { // Limit to first 20 lines
+            if (line.length > 5) { // Skip very short lines
+              tableData.push([line]);
+            }
           });
         }
       }

@@ -132,6 +132,7 @@ async function extractHandler(req: NextApiRequest, res: NextApiResponse) {
         let brandAnalysis = null;
         let detailedBrandReport = null;
         let formatError = null;
+        let savedExtraction = null;
         
         try {
           console.log('🔄 Starting data formatting...');
@@ -144,7 +145,8 @@ async function extractHandler(req: NextApiRequest, res: NextApiResponse) {
           const hasStructuredData = dataToFormat && (
             Object.keys(dataToFormat).some(key => key.startsWith('item_')) ||
             dataToFormat.company_name ||
-            dataToFormat.Company_Name
+            dataToFormat.Company_Name ||
+            dataToFormat.company?.name
           );
           
           if (!hasStructuredData && extractionResult.extractedText) {
@@ -181,15 +183,15 @@ async function extractHandler(req: NextApiRequest, res: NextApiResponse) {
           try {
             const rawData = extractionResult.data;
             formattedData = {
-              company: { name: rawData.company_name || rawData.Company_Name || 'Unknown Company' },
+              company: { name: rawData.company_name || rawData.Company_Name || rawData.company?.name || 'Unknown Company' },
               report: { 
                 title: rawData.report_title || rawData.Report_Type || 'Stock Report',
                 dateRange: rawData.date_range || rawData.report_date_range || 'Unknown Period',
                 generatedAt: new Date().toISOString()
               },
-              items: [],
+              items: rawData.items || [],
               summary: {
-                totalItems: 0,
+                totalItems: rawData.items?.length || 0,
                 totalSalesValue: rawData.total_sales_value || 0,
                 totalClosingValue: rawData.total_closing_value || 0
               }
@@ -202,6 +204,55 @@ async function extractHandler(req: NextApiRequest, res: NextApiResponse) {
             console.error('❌ Even fallback formatting failed:', fallbackError);
           }
         }
+
+        // Save to database if we have a valid file upload record
+        try {
+          if (storageUrl) {
+            console.log('💾 Saving extraction data to database...');
+            
+            // Import database service
+            const { getDatabaseService } = await import('../../lib/services/databaseService');
+            const dbService = getDatabaseService();
+            
+            // First, create file record if it doesn't exist
+            let fileRecord;
+            try {
+              fileRecord = await dbService.saveUploadedFile(
+                file.originalFilename || 'document.pdf',
+                generateSafeFilename(file.originalFilename || 'document.pdf'),
+                storageUrl,
+                file.mimetype || 'application/pdf',
+                file.size,
+                'system' // Default user ID - you might want to get this from JWT token
+              );
+            } catch (fileError) {
+              console.warn('⚠️ File record creation failed, using temporary ID');
+              fileRecord = { id: 'temp-' + Date.now() };
+            }
+
+            // Save extraction data
+            savedExtraction = await dbService.saveExtractionData({
+              fileId: fileRecord.id,
+              userId: 'system', // Default user ID - you might want to get this from JWT token
+              rawData: extractionResult.data,
+              structuredData: formattedData,
+              extractedText: extractionResult.extractedText,
+              ocrProvider: extractionResult.provider,
+              metadata: {
+                confidence: extractionResult.metadata?.confidence,
+                duration: extractionResult.metadata?.duration,
+                fileSize: extractionResult.metadata?.fileSize,
+                tables: extractionResult.metadata?.tables,
+                fields: extractionResult.metadata?.fields,
+              }
+            });
+
+            console.log(`✅ Extraction data saved to database: ${savedExtraction.id}`);
+          }
+        } catch (dbError: any) {
+          console.error('❌ Database save failed:', dbError.message);
+          // Don't fail the entire request if database save fails
+        }
         
         const responseData = {
           message: 'PDF extracted successfully',
@@ -212,6 +263,7 @@ async function extractHandler(req: NextApiRequest, res: NextApiResponse) {
           detailedBrandReport: detailedBrandReport,
           extractedText: extractionResult.extractedText,
           formatError: formatError,
+          extractionId: savedExtraction?.id,
           metadata: {
             originalFilename: file.originalFilename,
             fileSize: file.size,
@@ -220,12 +272,16 @@ async function extractHandler(req: NextApiRequest, res: NextApiResponse) {
             storageUrl: storageUrl,
             ocrProvider: extractionResult.provider || 'unknown',
             extractedTextLength: extractionResult.extractedText?.length || 0,
+            confidence: extractionResult.metadata?.confidence,
+            tables: extractionResult.metadata?.tables,
+            fields: extractionResult.metadata?.fields,
             formattingStatus: {
               formattedData: !!formattedData,
               summary: !!summary,
               brandAnalysis: !!brandAnalysis,
               detailedBrandReport: !!detailedBrandReport
-            }
+            },
+            databaseSaved: !!savedExtraction
           }
         };
 
